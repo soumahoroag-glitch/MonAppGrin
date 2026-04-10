@@ -1,0 +1,1114 @@
+import { useState, useMemo, useRef } from "react";
+
+const CURRENT_YEAR  = new Date().getFullYear();
+const CURRENT_MONTH = new Date().getMonth() + 1;
+const MOIS = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
+const ADMIN_PASSWORD = "admin123";
+const ADMIN_ID = "admin";
+
+// Prix unitaires par défaut (modifiables par l'admin)
+const DEFAULT_PRIX = { chaise: 100, bache: 2000 };
+
+const DEFAULT_TARIFS = { [CURRENT_YEAR]: 1000, [CURRENT_YEAR-1]: 1000 };
+
+const INITIAL_MEMBERS = [
+  { id:1, name:"Kouassi Aman",  email:"kouassi@email.com", phone:"07 12 34 56 78", joinDate:`${CURRENT_YEAR}-01-15`, password: null },
+  { id:2, name:"Fatou Diallo",  email:"fatou@email.com",   phone:"07 23 45 67 89", joinDate:`${CURRENT_YEAR}-01-20`, password: null },
+  { id:3, name:"Moussa Traoré", email:"moussa@email.com",  phone:"07 34 56 78 90", joinDate:`${CURRENT_YEAR}-02-10`, password: null },
+  { id:4, name:"Aminata Koné",  email:"aminata@email.com", phone:"07 45 67 89 01", joinDate:`${CURRENT_YEAR}-03-05`, password: null },
+  { id:5, name:"Ibrahima Sow",  email:"ibrahima@email.com",phone:"07 56 78 90 12", joinDate:`${CURRENT_YEAR}-01-08`, password: null },
+];
+
+const INITIAL_PAYMENTS = [
+  { id:1,  memberId:1, year:CURRENT_YEAR, month:1,    amount:1000, date:`${CURRENT_YEAR}-01-20`, method:"Mobile Money",  type:"mensuelle",    label:"" },
+  { id:2,  memberId:1, year:CURRENT_YEAR, month:2,    amount:1000, date:`${CURRENT_YEAR}-02-18`, method:"Mobile Money",  type:"mensuelle",    label:"" },
+  { id:3,  memberId:1, year:CURRENT_YEAR, month:3,    amount:1000, date:`${CURRENT_YEAR}-03-15`, method:"Mobile Money",  type:"mensuelle",    label:"" },
+  { id:4,  memberId:2, year:CURRENT_YEAR, month:1,    amount:1000, date:`${CURRENT_YEAR}-01-25`, method:"Espèces",       type:"mensuelle",    label:"" },
+  { id:5,  memberId:2, year:CURRENT_YEAR, month:2,    amount:1000, date:`${CURRENT_YEAR}-02-22`, method:"Espèces",       type:"mensuelle",    label:"" },
+  { id:6,  memberId:3, year:CURRENT_YEAR, month:1,    amount:1000, date:`${CURRENT_YEAR}-01-30`, method:"Virement",      type:"mensuelle",    label:"" },
+  { id:7,  memberId:5, year:CURRENT_YEAR, month:1,    amount:1000, date:`${CURRENT_YEAR}-01-10`, method:"Mobile Money",  type:"mensuelle",    label:"" },
+  { id:8,  memberId:5, year:CURRENT_YEAR, month:2,    amount:1000, date:`${CURRENT_YEAR}-02-10`, method:"Mobile Money",  type:"mensuelle",    label:"" },
+  { id:9,  memberId:5, year:CURRENT_YEAR, month:3,    amount:1000, date:`${CURRENT_YEAR}-03-10`, method:"Mobile Money",  type:"mensuelle",    label:"" },
+  { id:10, memberId:1, year:CURRENT_YEAR, month:null, amount:5000, date:`${CURRENT_YEAR}-02-05`, method:"Mobile Money",  type:"exceptionnelle", label:"Fonds d'urgence" },
+  { id:11, memberId:3, year:CURRENT_YEAR, month:null, amount:2500, date:`${CURRENT_YEAR}-03-01`, method:"Espèces",       type:"exceptionnelle", label:"Fête annuelle" },
+];
+
+// Locations : { id, type:"chaise"|"bache", quantite, prixUnit, montant, date, client, method, notes }
+const INITIAL_LOCATIONS = [
+  { id:1, type:"chaise", quantite:50, prixUnit:100, montant:5000,  date:`${CURRENT_YEAR}-02-10`, client:"Famille Koné",   method:"Espèces",      notes:"Baptême" },
+  { id:2, type:"bache",  quantite:2,  prixUnit:2000,montant:4000,  date:`${CURRENT_YEAR}-03-05`, client:"ASCA Yopougon", method:"Mobile Money", notes:"Conférence" },
+  { id:3, type:"chaise", quantite:30, prixUnit:100, montant:3000,  date:`${CURRENT_YEAR}-03-18`, client:"Église centrale",method:"Espèces",      notes:"Culte" },
+];
+
+const INITIAL_EVENTS = [
+  { id:1, title:"Assemblée Générale",    date:`${CURRENT_YEAR}-04-20`, time:"18:00", location:"Salle des fêtes",       description:"AG annuelle",         maxParticipants:50,  participants:[1,2,3] },
+  { id:2, title:"Fête de l'association", date:`${CURRENT_YEAR}-06-15`, time:"10:00", location:"Terrain communautaire", description:"Célébration annuelle", maxParticipants:100, participants:[1,4,5] },
+  { id:3, title:"Réunion Bureau",        date:`${CURRENT_YEAR}-04-10`, time:"19:30", location:"Local association",     description:"Réunion mensuelle",    maxParticipants:10,  participants:[2,3] },
+];
+
+const fmt  = (n) => new Intl.NumberFormat("fr-FR").format(n||0) + " FCFA";
+const fmtN = (n) => new Intl.NumberFormat("fr-FR").format(n||0);
+const today = () => new Date().toISOString().slice(0,10);
+
+// ── Icons ─────────────────────────────────────────────────────────────────────
+const Ico = ({ d, size=18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={d}/></svg>
+);
+const HomeIcon    = () => <Ico d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M9 22V12h6v10"/>;
+const UsersIcon   = () => <Ico d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2 M23 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75"/>;
+const CoinsIcon   = () => <Ico d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z M12 6v6l4 2"/>;
+const CalIcon     = () => <Ico d="M8 2v4 M16 2v4 M3 10h18 M21 8H3a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2z"/>;
+const ChairIcon   = () => <Ico d="M3 17h18 M5 17V7a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v10 M8 17v3 M16 17v3"/>;
+const ReportIcon  = () => <Ico d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M16 13H8 M16 17H8 M10 9H8"/>;
+const CheckIcon   = () => <Ico d="M20 6L9 17l-5-5"/>;
+const PlusIcon    = () => <Ico d="M12 5v14 M5 12h14"/>;
+const XIcon       = () => <Ico d="M18 6L6 18 M6 6l12 12"/>;
+const TrashIcon   = () => <Ico d="M3 6h18 M8 6V4h8v2 M19 6l-1 14H6L5 6"/>;
+const SearchIcon  = () => <Ico d="M21 21l-4.35-4.35 M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/>;
+const LockIcon    = () => <Ico d="M19 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2z M7 11V7a5 5 0 0 1 10 0v4"/>;
+const LogoutIcon  = () => <Ico d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4 M16 17l5-5-5-5 M21 12H9"/>;
+const EyeIcon     = () => <Ico d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/>;
+const EyeOffIcon  = () => <Ico d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24 M1 1l22 22"/>;
+const ShieldIcon  = () => <Ico d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>;
+const PersonIcon  = () => <Ico d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/>;
+const StarIcon    = () => <Ico d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>;
+const EditIcon    = () => <Ico d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7 M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>;
+const PrintIcon   = () => <Ico d="M6 9V2h12v7 M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2 M6 14h12v8H6z"/>;
+const DownloadIcon= () => <Ico d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3"/>;
+const KeyIcon     = () => <Ico d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>;
+
+// ── UI primitives ─────────────────────────────────────────────────────────────
+const Modal = ({ title, onClose, children, wide=false }) => (
+  <div style={{ position:"fixed", inset:0, background:"rgba(4,8,18,0.92)", zIndex:1000, display:"flex", alignItems:"flex-start", justifyContent:"center", padding:"1rem", overflowY:"auto" }}>
+    <div style={{ background:"#111827", border:"1px solid #1F2D45", borderRadius:"18px", width:"100%", maxWidth:wide?"680px":"480px", padding:"1.5rem", boxShadow:"0 30px 80px rgba(0,0,0,0.7)", marginTop:"1rem" }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"1.25rem" }}>
+        <h3 style={{ color:"#F0F6FF", fontSize:"1.05rem", fontWeight:700, margin:0 }}>{title}</h3>
+        <button onClick={onClose} style={{ background:"none", border:"none", color:"#5A7090", cursor:"pointer" }}><XIcon/></button>
+      </div>
+      {children}
+    </div>
+  </div>
+);
+const Inp = ({ label, ...p }) => (
+  <div style={{ marginBottom:"0.85rem" }}>
+    {label && <label style={{ display:"block", color:"#7A90B0", fontSize:"0.73rem", marginBottom:"0.28rem", fontWeight:600, textTransform:"uppercase", letterSpacing:"0.06em" }}>{label}</label>}
+    <input {...p} style={{ width:"100%", background:"#0C1322", border:"1px solid #1F2D45", borderRadius:"8px", padding:"0.58rem 0.75rem", color:"#F0F6FF", fontSize:"0.88rem", outline:"none", boxSizing:"border-box", ...p.style }}/>
+  </div>
+);
+const Sel = ({ label, children, ...p }) => (
+  <div style={{ marginBottom:"0.85rem" }}>
+    {label && <label style={{ display:"block", color:"#7A90B0", fontSize:"0.73rem", marginBottom:"0.28rem", fontWeight:600, textTransform:"uppercase", letterSpacing:"0.06em" }}>{label}</label>}
+    <select {...p} style={{ width:"100%", background:"#0C1322", border:"1px solid #1F2D45", borderRadius:"8px", padding:"0.58rem 0.75rem", color:"#F0F6FF", fontSize:"0.88rem", outline:"none", boxSizing:"border-box" }}>{children}</select>
+  </div>
+);
+const Btn = ({ children, onClick, variant="primary", small=false, style:s={} }) => {
+  const v = {
+    primary: { background:"linear-gradient(135deg,#1D6AF5,#1558CC)", color:"#fff", border:"none" },
+    success: { background:"linear-gradient(135deg,#059669,#047857)", color:"#fff", border:"none" },
+    danger:  { background:"transparent", color:"#F87171", border:"1px solid #7F1D1D" },
+    ghost:   { background:"transparent", color:"#7A90B0", border:"1px solid #1F2D45" },
+    orange:  { background:"linear-gradient(135deg,#D97706,#B45309)", color:"#fff", border:"none" },
+    purple:  { background:"linear-gradient(135deg,#7C3AED,#6D28D9)", color:"#fff", border:"none" },
+    teal:    { background:"linear-gradient(135deg,#0D9488,#0F766E)", color:"#fff", border:"none" },
+    rose:    { background:"linear-gradient(135deg,#E11D48,#BE123C)", color:"#fff", border:"none" },
+  };
+  return <button onClick={onClick} style={{ ...v[variant], borderRadius:"8px", padding:small?"0.28rem 0.65rem":"0.6rem 1.1rem", fontSize:small?"0.73rem":"0.86rem", fontWeight:600, cursor:"pointer", display:"inline-flex", alignItems:"center", gap:"0.35rem", ...s }}>{children}</button>;
+};
+const StatusBadge = ({ status }) => {
+  const c={ok:["#041A0E","#4ADE80","À jour"],partial:["#1A1000","#FB923C","Partiel"],late:["#1A0505","#F87171","En retard"]}[status];
+  return <span style={{ background:c[0], color:c[1], borderRadius:"20px", padding:"2px 9px", fontSize:"0.7rem", fontWeight:700 }}>{c[2]}</span>;
+};
+const TypeBadge = ({ type }) => type==="exceptionnelle"
+  ? <span style={{ background:"#1E0A3C", color:"#C084FC", borderRadius:"20px", padding:"2px 9px", fontSize:"0.68rem", fontWeight:700, display:"inline-flex", alignItems:"center", gap:"3px" }}><StarIcon size={10}/> Except.</span>
+  : <span style={{ background:"#0A1930", color:"#60A5FA", borderRadius:"20px", padding:"2px 9px", fontSize:"0.68rem", fontWeight:700 }}>Mensuelle</span>;
+
+// ── PWD INPUT ─────────────────────────────────────────────────────────────────
+const PwdInput = ({ label, value, onChange, placeholder="••••••••" }) => {
+  const [show, setShow] = useState(false);
+  return (
+    <div style={{ marginBottom:"0.85rem" }}>
+      {label&&<label style={{ display:"block", color:"#7A90B0", fontSize:"0.73rem", marginBottom:"0.28rem", fontWeight:600, textTransform:"uppercase", letterSpacing:"0.06em" }}>{label}</label>}
+      <div style={{ position:"relative" }}>
+        <input type={show?"text":"password"} value={value} onChange={onChange} placeholder={placeholder}
+          style={{ width:"100%", background:"#0C1322", border:"1px solid #1F2D45", borderRadius:"8px", padding:"0.58rem 2.5rem 0.58rem 0.75rem", color:"#F0F6FF", fontSize:"0.88rem", outline:"none", boxSizing:"border-box" }}/>
+        <button onClick={()=>setShow(x=>!x)} style={{ position:"absolute", right:"0.6rem", top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:"#3A5070", cursor:"pointer" }}>{show?<EyeOffIcon/>:<EyeIcon/>}</button>
+      </div>
+    </div>
+  );
+};
+
+// ── FIRST LOGIN (choix mot de passe) ──────────────────────────────────────────
+function FirstLoginScreen({ member, onSet }) {
+  const [pwd, setPwd]   = useState("");
+  const [pwd2, setPwd2] = useState("");
+  const [err, setErr]   = useState("");
+  const submit = () => {
+    if (pwd.length < 4) return setErr("Minimum 4 caractères");
+    if (pwd !== pwd2)   return setErr("Les mots de passe ne correspondent pas");
+    onSet(pwd);
+  };
+  const css = `@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap');*{margin:0;padding:0;box-sizing:border-box}body{background:#060C18;font-family:'DM Sans',sans-serif;color:#E8F0FF}input:focus{border-color:#1D6AF5!important}input::placeholder{color:#2A3D5E}`;
+  return (
+    <>
+      <style>{css}</style>
+      <div style={{ minHeight:"100vh", background:"#060C18", maxWidth:"430px", margin:"0 auto", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"2rem 1.5rem" }}>
+        <div style={{ width:"60px", height:"60px", borderRadius:"18px", background:"linear-gradient(135deg,#1D6AF5,#7C3AED)", display:"flex", alignItems:"center", justifyContent:"center", marginBottom:"1.5rem" }}><KeyIcon size={28}/></div>
+        <h1 style={{ fontFamily:"Syne", fontSize:"1.4rem", fontWeight:800, color:"#F0F6FF", textAlign:"center", marginBottom:"0.4rem" }}>Bienvenue, {member.name.split(" ")[0]} !</h1>
+        <p style={{ color:"#3A5A8A", fontSize:"0.85rem", textAlign:"center", marginBottom:"2rem" }}>Première connexion — choisissez votre mot de passe personnel</p>
+        <div style={{ width:"100%", background:"#0C1322", border:"1px solid #1A2A40", borderRadius:"16px", padding:"1.5rem" }}>
+          <PwdInput label="Nouveau mot de passe (min. 4 caractères)" value={pwd} onChange={e=>{setPwd(e.target.value);setErr("");}}/>
+          <PwdInput label="Confirmer le mot de passe" value={pwd2} onChange={e=>{setPwd2(e.target.value);setErr("");}}/>
+          {err&&<p style={{ color:"#F87171", fontSize:"0.78rem", marginBottom:"0.75rem" }}>⚠ {err}</p>}
+          <Btn onClick={submit} style={{ width:"100%", justifyContent:"center" }}><CheckIcon/> Définir mon mot de passe</Btn>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ── LOGIN ─────────────────────────────────────────────────────────────────────
+function LoginScreen({ members, onLogin }) {
+  const [mode, setMode]   = useState("choice");
+  const [pwd, setPwd]     = useState("");
+  const [selId, setSelId] = useState("");
+  const [memberPwd, setMemberPwd] = useState("");
+  const [err, setErr]     = useState("");
+
+  const tryAdmin = () => pwd===ADMIN_PASSWORD ? onLogin({role:"admin"}) : setErr("Mot de passe incorrect");
+  const tryMember = () => {
+    const m = members.find(m=>m.id===parseInt(selId));
+    if (!m) return setErr("Veuillez sélectionner votre nom");
+    if (!m.password) return onLogin({role:"firstLogin", memberId:m.id});
+    if (memberPwd !== m.password) return setErr("Mot de passe incorrect");
+    onLogin({role:"member", memberId:m.id, memberName:m.name});
+  };
+  const css = `@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap');*{margin:0;padding:0;box-sizing:border-box}body{background:#060C18;font-family:'DM Sans',sans-serif;color:#E8F0FF}input:focus,select:focus{border-color:#1D6AF5!important}input::placeholder{color:#2A3D5E}`;
+
+  return (
+    <>
+      <style>{css}</style>
+      <div style={{ minHeight:"100vh", background:"#060C18", maxWidth:"430px", margin:"0 auto", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"2rem 1.5rem" }}>
+        <div style={{ width:"64px", height:"64px", borderRadius:"20px", background:"linear-gradient(135deg,#1D6AF5,#7C3AED)", display:"flex", alignItems:"center", justifyContent:"center", marginBottom:"1.5rem", boxShadow:"0 0 40px #1D6AF540" }}><ShieldIcon size={32}/></div>
+        <h1 style={{ fontFamily:"Syne", fontSize:"1.6rem", fontWeight:800, color:"#F0F6FF", marginBottom:"0.4rem", textAlign:"center" }}>Mon Association</h1>
+        <p style={{ color:"#3A5A8A", fontSize:"0.85rem", marginBottom:"2.5rem", textAlign:"center" }}>Connectez-vous pour accéder à l'application</p>
+
+        {mode==="choice"&&(
+          <div style={{ width:"100%", display:"flex", flexDirection:"column", gap:"0.75rem" }}>
+            <button onClick={()=>{setMode("admin");setErr("");}} style={{ background:"linear-gradient(135deg,#1A1000,#221500)", border:"1px solid #D9770640", borderRadius:"14px", padding:"1.1rem 1.25rem", display:"flex", alignItems:"center", gap:"1rem", cursor:"pointer", textAlign:"left" }}>
+              <div style={{ width:"42px", height:"42px", borderRadius:"12px", background:"linear-gradient(135deg,#D97706,#B45309)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}><ShieldIcon size={20}/></div>
+              <div><p style={{ color:"#FBBF24", fontWeight:700, fontSize:"0.95rem" }}>Administrateur</p><p style={{ color:"#7A6030", fontSize:"0.75rem" }}>Accès complet — gestion totale</p></div>
+            </button>
+            <button onClick={()=>{setMode("member");setErr("");}} style={{ background:"linear-gradient(135deg,#0A1930,#0D1F40)", border:"1px solid #1D6AF540", borderRadius:"14px", padding:"1.1rem 1.25rem", display:"flex", alignItems:"center", gap:"1rem", cursor:"pointer", textAlign:"left" }}>
+              <div style={{ width:"42px", height:"42px", borderRadius:"12px", background:"linear-gradient(135deg,#1D6AF5,#7C3AED)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}><PersonIcon size={20}/></div>
+              <div><p style={{ color:"#60A5FA", fontWeight:700, fontSize:"0.95rem" }}>Membre</p><p style={{ color:"#2A4A7A", fontSize:"0.75rem" }}>Lecture seule — voir votre statut et cotisations</p></div>
+            </button>
+          </div>
+        )}
+
+        {mode==="admin"&&(
+          <div style={{ width:"100%", background:"#0C1322", border:"1px solid #1A2A40", borderRadius:"16px", padding:"1.5rem" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:"0.5rem", marginBottom:"1.25rem" }}><span style={{ color:"#FBBF24" }}><ShieldIcon size={16}/></span><p style={{ color:"#FBBF24", fontWeight:700, fontSize:"0.9rem" }}>Connexion Administrateur</p></div>
+            <PwdInput label="Mot de passe" value={pwd} onChange={e=>{setPwd(e.target.value);setErr("");}}/>
+            {err&&<p style={{ color:"#F87171", fontSize:"0.78rem", marginBottom:"0.75rem" }}>⚠ {err}</p>}
+            <div style={{ display:"flex", gap:"0.5rem" }}>
+              <Btn variant="ghost" onClick={()=>{setMode("choice");setPwd("");setErr("");}}>Retour</Btn>
+              <Btn variant="orange" onClick={tryAdmin} style={{ flex:1, justifyContent:"center" }}><LockIcon/> Connexion</Btn>
+            </div>
+          </div>
+        )}
+
+        {mode==="member"&&(
+          <div style={{ width:"100%", background:"#0C1322", border:"1px solid #1A2A40", borderRadius:"16px", padding:"1.5rem" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:"0.5rem", marginBottom:"1.25rem" }}><span style={{ color:"#60A5FA" }}><PersonIcon size={16}/></span><p style={{ color:"#60A5FA", fontWeight:700, fontSize:"0.9rem" }}>Connexion Membre</p></div>
+            <Sel label="Sélectionnez votre nom" value={selId} onChange={e=>{setSelId(e.target.value);setMemberPwd("");setErr("");}}>
+              <option value="">— Choisir —</option>
+              {members.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+            </Sel>
+            {selId&&members.find(m=>m.id===parseInt(selId))?.password&&(
+              <PwdInput label="Mot de passe" value={memberPwd} onChange={e=>{setMemberPwd(e.target.value);setErr("");}}/>
+            )}
+            {selId&&!members.find(m=>m.id===parseInt(selId))?.password&&(
+              <div style={{ background:"#0D1F40", borderRadius:"8px", padding:"0.6rem 0.75rem", marginBottom:"0.85rem" }}>
+                <p style={{ color:"#60A5FA", fontSize:"0.78rem" }}>👋 Première connexion — vous choisirez votre mot de passe à l'étape suivante.</p>
+              </div>
+            )}
+            {err&&<p style={{ color:"#F87171", fontSize:"0.78rem", marginBottom:"0.75rem" }}>⚠ {err}</p>}
+            <div style={{ display:"flex", gap:"0.5rem" }}>
+              <Btn variant="ghost" onClick={()=>{setMode("choice");setSelId("");setMemberPwd("");setErr("");}}>Retour</Btn>
+              <Btn onClick={tryMember} style={{ flex:1, justifyContent:"center" }}><CheckIcon/> Accéder</Btn>
+            </div>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+// ── BILAN (composant séparé pour impression) ───────────────────────────────────
+function BilanContent({ dateFrom, dateTo, payments, locations, members, tarifs, assocName="Mon Association" }) {
+  const inRange = (d) => d >= dateFrom && d <= dateTo;
+  const payInRange  = payments.filter(p=>inRange(p.date));
+  const locInRange  = locations.filter(l=>inRange(l.date));
+
+  const totalMensuel = payInRange.filter(p=>p.type==="mensuelle").reduce((s,p)=>s+p.amount,0);
+  const totalExcep   = payInRange.filter(p=>p.type==="exceptionnelle").reduce((s,p)=>s+p.amount,0);
+  const totalChaises = locInRange.filter(l=>l.type==="chaise").reduce((s,l)=>s+l.montant,0);
+  const totalBaches  = locInRange.filter(l=>l.type==="bache").reduce((s,l)=>s+l.montant,0);
+  const totalLoc     = totalChaises + totalBaches;
+  const totalRecettes= totalMensuel + totalExcep + totalLoc;
+
+  const cell = (txt, bold=false, right=false, color="#E8F0FF", bg="transparent") => ({
+    padding:"6px 10px", fontSize:"0.78rem", color, fontWeight:bold?700:400,
+    textAlign:right?"right":"left", background:bg, borderBottom:"1px solid #1A2A40"
+  });
+
+  return (
+    <div id="bilan-content" style={{ fontFamily:"'DM Sans',sans-serif", color:"#E8F0FF" }}>
+      {/* En-tête */}
+      <div style={{ textAlign:"center", marginBottom:"1.5rem" }}>
+        <h2 style={{ fontFamily:"Syne,sans-serif", fontSize:"1.3rem", fontWeight:800, color:"#F0F6FF", marginBottom:"0.2rem" }}>{assocName}</h2>
+        <p style={{ color:"#60A5FA", fontSize:"0.85rem", fontWeight:600 }}>BILAN FINANCIER</p>
+        <p style={{ color:"#5A7090", fontSize:"0.78rem" }}>Période : {new Date(dateFrom).toLocaleDateString("fr-FR")} → {new Date(dateTo).toLocaleDateString("fr-FR")}</p>
+        <p style={{ color:"#3A5070", fontSize:"0.72rem" }}>Généré le {new Date().toLocaleDateString("fr-FR")} à {new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</p>
+      </div>
+
+      {/* Résumé global */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"0.5rem", marginBottom:"1.25rem" }}>
+        {[
+          {label:"Cotisations",value:fmt(totalMensuel+totalExcep),color:"#60A5FA",bg:"#0A1930"},
+          {label:"Locations",  value:fmt(totalLoc),             color:"#FBBF24",bg:"#1A1000"},
+          {label:"TOTAL",      value:fmt(totalRecettes),         color:"#4ADE80",bg:"#041A0E"},
+        ].map(s=>(
+          <div key={s.label} style={{ background:s.bg, borderRadius:"10px", padding:"0.6rem", textAlign:"center", border:`1px solid ${s.color}20` }}>
+            <p style={{ color:"#4A6080", fontSize:"0.62rem", fontWeight:600, textTransform:"uppercase" }}>{s.label}</p>
+            <p style={{ color:s.color, fontFamily:"Syne,sans-serif", fontSize:"0.85rem", fontWeight:800 }}>{s.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* COTISATIONS */}
+      <p style={{ color:"#60A5FA", fontSize:"0.75rem", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:"0.5rem" }}>Cotisations</p>
+      <table style={{ width:"100%", borderCollapse:"collapse", marginBottom:"1.25rem", background:"#0C1322", borderRadius:"10px", overflow:"hidden" }}>
+        <thead>
+          <tr style={{ background:"#0D1F40" }}>
+            <th style={{ ...cell("",true), color:"#7A90B0" }}>Membre</th>
+            <th style={{ ...cell("",true), color:"#7A90B0" }}>Type</th>
+            <th style={{ ...cell("",true), color:"#7A90B0" }}>Détail</th>
+            <th style={{ ...cell("",true,true), color:"#7A90B0" }}>Montant</th>
+          </tr>
+        </thead>
+        <tbody>
+          {payInRange.length===0&&<tr><td colSpan={4} style={{ ...cell(""), color:"#3A5070", textAlign:"center" }}>Aucun paiement</td></tr>}
+          {payInRange.map(p=>{
+            const m=members.find(x=>x.id===p.memberId);
+            return (
+              <tr key={p.id}>
+                <td style={cell("")}>{m?.name||"—"}</td>
+                <td style={cell("")}>{p.type==="mensuelle"?"Mensuelle":"Exceptionnel"}</td>
+                <td style={cell("")}>{p.type==="mensuelle"?`${MOIS[p.month-1]} ${p.year}`:p.label}</td>
+                <td style={{ ...cell("",true,true), color:"#4ADE80" }}>{fmt(p.amount)}</td>
+              </tr>
+            );
+          })}
+          <tr style={{ background:"#0D1F40" }}>
+            <td colSpan={3} style={{ ...cell("",true), color:"#F0F6FF" }}>SOUS-TOTAL COTISATIONS</td>
+            <td style={{ ...cell("",true,true), color:"#60A5FA" }}>{fmt(totalMensuel+totalExcep)}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      {/* LOCATIONS */}
+      <p style={{ color:"#FBBF24", fontSize:"0.75rem", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:"0.5rem" }}>Revenus de location</p>
+      <table style={{ width:"100%", borderCollapse:"collapse", marginBottom:"1.25rem", background:"#0C1322", borderRadius:"10px", overflow:"hidden" }}>
+        <thead>
+          <tr style={{ background:"#1A1000" }}>
+            {["Date","Type","Client","Qté","P.U.","Montant"].map(h=>(
+              <th key={h} style={{ ...cell("",true,h==="Montant"||h==="Qté"||h==="P.U."), color:"#7A90B0" }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {locInRange.length===0&&<tr><td colSpan={6} style={{ ...cell(""), color:"#3A5070", textAlign:"center" }}>Aucune location</td></tr>}
+          {locInRange.map(l=>(
+            <tr key={l.id}>
+              <td style={cell("")}>{new Date(l.date).toLocaleDateString("fr-FR")}</td>
+              <td style={cell("")}>{l.type==="chaise"?"🪑 Chaises":"🏕 Bâche"}</td>
+              <td style={cell("")}>{l.client||"—"}</td>
+              <td style={{ ...cell(""),textAlign:"right" }}>{fmtN(l.quantite)}</td>
+              <td style={{ ...cell(""),textAlign:"right" }}>{fmt(l.prixUnit)}</td>
+              <td style={{ ...cell("",true,true), color:"#FBBF24" }}>{fmt(l.montant)}</td>
+            </tr>
+          ))}
+          <tr style={{ background:"#1A1000" }}>
+            <td colSpan={5} style={{ ...cell("",true), color:"#F0F6FF" }}>SOUS-TOTAL LOCATIONS</td>
+            <td style={{ ...cell("",true,true), color:"#FBBF24" }}>{fmt(totalLoc)}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      {/* TOTAL GÉNÉRAL */}
+      <div style={{ background:"linear-gradient(135deg,#041A0E,#0A1020)", border:"1px solid #4ADE8030", borderRadius:"12px", padding:"1rem", textAlign:"center" }}>
+        <p style={{ color:"#7A90B0", fontSize:"0.75rem", fontWeight:600, textTransform:"uppercase", marginBottom:"0.3rem" }}>TOTAL GÉNÉRAL DES RECETTES</p>
+        <p style={{ color:"#4ADE80", fontFamily:"Syne,sans-serif", fontSize:"1.6rem", fontWeight:800 }}>{fmt(totalRecettes)}</p>
+        <div style={{ display:"flex", justifyContent:"center", gap:"1.5rem", marginTop:"0.5rem" }}>
+          <span style={{ color:"#60A5FA", fontSize:"0.72rem" }}>Cotis. : {fmt(totalMensuel+totalExcep)}</span>
+          <span style={{ color:"#FBBF24", fontSize:"0.72rem" }}>Locations : {fmt(totalLoc)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── MAIN ──────────────────────────────────────────────────────────────────────
+export default function App() {
+  const [session, setSession]     = useState(null);
+  const [members, setMembers]     = useState(INITIAL_MEMBERS);
+  const [payments, setPayments]   = useState(INITIAL_PAYMENTS);
+  const [locations, setLocations] = useState(INITIAL_LOCATIONS);
+  const [events, setEvents]       = useState(INITIAL_EVENTS);
+  const [tarifs, setTarifs]       = useState(DEFAULT_TARIFS);
+  const [prix, setPrix]           = useState(DEFAULT_PRIX); // prix unitaires chaise/bache
+  const [tab, setTab]             = useState("dashboard");
+  const [modal, setModal]         = useState(null);
+  const [search, setSearch]       = useState("");
+  const [filterYear, setFilterYear] = useState(CURRENT_YEAR);
+  const [filterType, setFilterType] = useState("all");
+  const [selMember, setSelMember] = useState(null);
+  const [form, setForm]           = useState({});
+  const [bilan, setBilan]         = useState({ from:`${CURRENT_YEAR}-01-01`, to:today() });
+  const bilanRef = useRef();
+
+  const isAdmin  = session?.role==="admin";
+  const isMember = session?.role==="member";
+  const myId     = session?.memberId;
+
+  // ── helpers ────────────────────────────────────────────────────────────────
+  const getTarif = (year) => {
+    if (tarifs[year]) return tarifs[year];
+    const years = Object.keys(tarifs).map(Number).filter(y=>y<=year).sort((a,b)=>b-a);
+    return years.length>0?tarifs[years[0]]:1000;
+  };
+  const hasPaidMonth = (mId,year,month) => payments.some(p=>p.memberId===mId&&p.year===year&&p.month===month&&p.type==="mensuelle");
+  const getMonthsDue = (member,year) => {
+    const jd=new Date(member.joinDate),jy=jd.getFullYear(),jm=jd.getMonth()+1;
+    const start=year===jy?jm:(year<jy?99:1);
+    const end=year===CURRENT_YEAR?CURRENT_MONTH:(year<CURRENT_YEAR?12:0);
+    return start>end?0:end-start+1;
+  };
+  const getPaidMonths = (mId,year) => payments.filter(p=>p.memberId===mId&&p.year===year&&p.type==="mensuelle").length;
+  const getMemberStatus = (member,year) => {
+    const due=getMonthsDue(member,year); if(due===0) return "ok";
+    const paid=getPaidMonths(member.id,year);
+    return paid>=due?"ok":paid>0?"partial":"late";
+  };
+  const getTotalExcep = (mId,year) => payments.filter(p=>p.memberId===mId&&p.year===year&&p.type==="exceptionnelle").reduce((s,p)=>s+p.amount,0);
+
+  const stats = useMemo(()=>{
+    const totalMembers = members.length;
+    const upToDate     = members.filter(m=>getMemberStatus(m,CURRENT_YEAR)==="ok").length;
+    const collMensuel  = payments.filter(p=>p.year===CURRENT_YEAR&&p.type==="mensuelle").reduce((s,p)=>s+p.amount,0);
+    const collExcep    = payments.filter(p=>p.year===CURRENT_YEAR&&p.type==="exceptionnelle").reduce((s,p)=>s+p.amount,0);
+    const tarif        = getTarif(CURRENT_YEAR);
+    const totalExpected= members.reduce((s,m)=>s+getMonthsDue(m,CURRENT_YEAR)*tarif,0);
+    const totalLocYear = locations.filter(l=>l.date.startsWith(String(CURRENT_YEAR))).reduce((s,l)=>s+l.montant,0);
+    const totalRecettes= collMensuel+collExcep+totalLocYear;
+    return { totalMembers, upToDate, collMensuel, collExcep, totalExpected, totalLocYear, totalRecettes };
+  },[members,payments,locations,tarifs]);
+
+  // ── actions ────────────────────────────────────────────────────────────────
+  const handleSetPassword = (pwd) => {
+    const mId = session.pendingMemberId;
+    setMembers(p=>p.map(m=>m.id===mId?{...m,password:pwd}:m));
+    setSession({ role:"member", memberId:mId, memberName:members.find(m=>m.id===mId)?.name });
+  };
+  const handleAddMember = () => {
+    if(!form.name) return;
+    setMembers(p=>[...p,{id:Date.now(),name:form.name,email:form.email||"",phone:form.phone||"",joinDate:form.joinDate||today(),password:null}]);
+    setModal(null);setForm({});
+  };
+  const handleAddPayment = () => {
+    const isMens=form.payType!=="exceptionnelle";
+    if(!form.memberId||(isMens&&!form.month)||(!isMens&&!form.label)) return;
+    const year=parseInt(form.year||CURRENT_YEAR);
+    setPayments(p=>[...p,{id:Date.now(),memberId:parseInt(form.memberId),year,month:isMens?parseInt(form.month):null,amount:parseFloat(form.amount||(isMens?getTarif(year):0)),date:form.date||today(),method:form.method||"Espèces",type:isMens?"mensuelle":"exceptionnelle",label:isMens?"":form.label}]);
+    setModal(null);setForm({});
+  };
+  const handleAddLocation = () => {
+    if(!form.locType||!form.quantite) return;
+    const prixUnit = parseFloat(form.prixUnit||(form.locType==="chaise"?prix.chaise:prix.bache));
+    const qte      = parseFloat(form.quantite);
+    setLocations(p=>[...p,{id:Date.now(),type:form.locType,quantite:qte,prixUnit,montant:qte*prixUnit,date:form.date||today(),client:form.client||"",method:form.method||"Espèces",notes:form.notes||""}]);
+    setModal(null);setForm({});
+  };
+  const handleAddEvent = () => {
+    if(!form.title||!form.date) return;
+    setEvents(p=>[...p,{id:Date.now(),title:form.title,date:form.date,time:form.time||"09:00",location:form.location||"",description:form.description||"",maxParticipants:parseInt(form.maxParticipants||50),participants:[]}]);
+    setModal(null);setForm({});
+  };
+  const handleSaveTarif = () => {
+    const year=parseInt(form.tarifYear||CURRENT_YEAR), m=parseFloat(form.tarifMontant);
+    if(!m||m<=0) return;
+    setTarifs(t=>({...t,[year]:m})); setModal(null);setForm({});
+  };
+  const quickPayMonth = (mId,month) => {
+    if(hasPaidMonth(mId,CURRENT_YEAR,month)) return;
+    setPayments(p=>[...p,{id:Date.now(),memberId:mId,year:CURRENT_YEAR,month,amount:getTarif(CURRENT_YEAR),date:today(),method:"Espèces",type:"mensuelle",label:""}]);
+  };
+  const toggleParticipant=(eId,mId)=>setEvents(evs=>evs.map(e=>e.id!==eId?e:{...e,participants:e.participants.includes(mId)?e.participants.filter(x=>x!==mId):[...e.participants,mId]}));
+  const deleteMember=(id)=>{if(window.confirm("Supprimer ?")){ setMembers(p=>p.filter(m=>m.id!==id));setPayments(p=>p.filter(py=>py.memberId!==id));}};
+  const deleteEvent=(id)=>{if(window.confirm("Supprimer ?"))setEvents(p=>p.filter(e=>e.id!==id));};
+  const deletePayment=(id)=>{if(window.confirm("Supprimer ce paiement ?"))setPayments(p=>p.filter(py=>py.id!==id));};
+  const deleteLocation=(id)=>{if(window.confirm("Supprimer ?"))setLocations(p=>p.filter(l=>l.id!==id));};
+  const resetMemberPwd=(id)=>{if(window.confirm("Réinitialiser le mot de passe de ce membre ?"))setMembers(p=>p.map(m=>m.id===id?{...m,password:null}:m));};
+
+  // Impression bilan
+  const printBilan = () => {
+    const content = document.getElementById("bilan-content");
+    if(!content) return;
+    const w = window.open("","_blank");
+    w.document.write(`<html><head><title>Bilan Financier</title><style>
+      @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap');
+      body{background:#060C18;color:#E8F0FF;font-family:'DM Sans',sans-serif;padding:2rem;max-width:800px;margin:0 auto}
+      table{width:100%;border-collapse:collapse}
+      @media print{body{background:white;color:black} .no-print{display:none}}
+    </style></head><body>${content.innerHTML}<br/><button class="no-print" onclick="window.print()" style="background:#1D6AF5;color:white;border:none;padding:0.75rem 2rem;border-radius:8px;font-size:1rem;cursor:pointer;margin-top:1rem">🖨 Imprimer / Sauvegarder en PDF</button></body></html>`);
+    w.document.close();
+  };
+
+  const filteredMembers = isMember ? members.filter(m=>m.id===myId) : members.filter(m=>m.name.toLowerCase().includes(search.toLowerCase()));
+
+  const NAV = [
+    {id:"dashboard",  label:"Accueil",     icon:<HomeIcon/>},
+    {id:"members",    label:"Membres",     icon:<UsersIcon/>},
+    {id:"cotisations",label:"Cotisations", icon:<CoinsIcon/>},
+    {id:"locations",  label:"Locations",   icon:<ChairIcon/>},
+    {id:"events",     label:"Événements",  icon:<CalIcon/>},
+  ];
+
+  const css = `
+    @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap');
+    *{margin:0;padding:0;box-sizing:border-box}body{background:#060C18;font-family:'DM Sans',sans-serif;color:#E8F0FF}
+    input:focus,select:focus{border-color:#1D6AF5!important}input::placeholder,textarea::placeholder{color:#2A3D5E}
+    ::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#1F2D45;border-radius:4px}
+  `;
+
+  // ── First login flow ───────────────────────────────────────────────────────
+  if (!session) return <LoginScreen members={members} onLogin={(s)=>{
+    if(s.role==="firstLogin") setSession({role:"firstLogin",pendingMemberId:s.memberId});
+    else setSession(s);
+  }}/>;
+
+  if (session.role==="firstLogin") {
+    const m = members.find(m=>m.id===session.pendingMemberId);
+    return <FirstLoginScreen member={m} onSet={handleSetPassword}/>;
+  }
+
+  // ── Grille mois ────────────────────────────────────────────────────────────
+  const MonthGrid = ({ member, year, clickable }) => {
+    const tarif=getTarif(year), due=getMonthsDue(member,year), paid=getPaidMonths(member.id,year), retard=Math.max(0,due-paid);
+    return (
+      <div style={{ background:"#0A1020", borderRadius:"8px", padding:"0.6rem" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", marginBottom:"0.4rem" }}>
+          <span style={{ color:"#5A7090", fontSize:"0.68rem" }}>Mensuel {year} — <strong style={{ color:"#FBBF24" }}>{fmt(tarif)}/mois</strong></span>
+          <span style={{ color:paid>=due?"#4ADE80":"#FB923C", fontSize:"0.68rem", fontWeight:700 }}>{paid}/{due} mois</span>
+        </div>
+        <div style={{ display:"flex", gap:"2px" }}>
+          {MOIS.map((mo,i)=>{
+            const month=i+1, jd=new Date(member.joinDate), jy=jd.getFullYear(), jm=jd.getMonth()+1;
+            const na=(year===jy&&month<jm)||(year===CURRENT_YEAR&&month>CURRENT_MONTH)||(year>CURRENT_YEAR);
+            const p=hasPaidMonth(member.id,year,month);
+            return (
+              <div key={month} title={na?"":p?`${mo} ✓`:`Cliquer → ${mo} payé`}
+                onClick={()=>clickable&&!na&&!p&&quickPayMonth(member.id,month)}
+                style={{ flex:1, height:"24px", borderRadius:"4px", background:na?"#0C1520":p?"#143A1E":"#3A0A0A", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", cursor:clickable&&!na&&!p?"pointer":"default", border:month===CURRENT_MONTH&&year===CURRENT_YEAR?"1px solid #1D6AF5":"none" }}>
+                <span style={{ color:na?"#1A2A40":p?"#4ADE80":"#7F1D1D", fontSize:"0.52rem", fontWeight:700 }}>{mo.slice(0,1)}</span>
+                {p&&<span style={{ color:"#4ADE80", fontSize:"0.48rem" }}>✓</span>}
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ display:"flex", justifyContent:"space-between", marginTop:"0.4rem" }}>
+          <span style={{ color:"#4ADE80", fontSize:"0.65rem" }}>{fmt(paid*tarif)} payé</span>
+          {retard>0&&<span style={{ color:"#F87171", fontSize:"0.65rem" }}>{fmt(retard*tarif)} dû</span>}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <>
+      <style>{css}</style>
+      <div style={{ minHeight:"100vh", background:"#060C18", maxWidth:"430px", margin:"0 auto", paddingBottom:"80px" }}>
+
+        {/* Header */}
+        <div style={{ background:"linear-gradient(180deg,#0C1322 0%,transparent 100%)", padding:"1.1rem 1.2rem 0.75rem", position:"sticky", top:0, zIndex:10, backdropFilter:"blur(12px)" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+            <div>
+              <div style={{ display:"flex", alignItems:"center", gap:"0.4rem", marginBottom:"0.1rem" }}>
+                {isAdmin
+                  ? <span style={{ background:"#1A1000", color:"#FBBF24", fontSize:"0.62rem", fontWeight:700, padding:"1px 7px", borderRadius:"20px", border:"1px solid #D9770630" }}>⚙ Admin</span>
+                  : <span style={{ background:"#0A1930", color:"#60A5FA", fontSize:"0.62rem", fontWeight:700, padding:"1px 7px", borderRadius:"20px", border:"1px solid #1D6AF530" }}>👁 Lecture seule</span>
+                }
+              </div>
+              <h1 style={{ fontFamily:"Syne", fontSize:"1.25rem", fontWeight:800, color:"#F0F6FF", lineHeight:1.15 }}>
+                {tab==="dashboard"&&"Tableau de bord"}{tab==="members"&&(isMember?"Mon profil":"Membres")}{tab==="cotisations"&&"Cotisations"}{tab==="locations"&&"Locations"}{tab==="events"&&"Événements"}
+              </h1>
+              {isMember&&<p style={{ color:"#3A5A8A", fontSize:"0.7rem" }}>Bonjour, <strong style={{ color:"#60A5FA" }}>{session.memberName}</strong></p>}
+            </div>
+            <div style={{ display:"flex", alignItems:"center", gap:"0.4rem" }}>
+              {isAdmin&&tab==="dashboard"&&<Btn small variant="teal" onClick={()=>setModal("bilan")}><ReportIcon size={14}/> Bilan</Btn>}
+              {isAdmin&&tab!=="dashboard"&&tab!=="events"&&(
+                <Btn small onClick={()=>{ setModal(tab==="members"?"addMember":tab==="cotisations"?"addCotisation":"addLocation"); setForm({payType:"mensuelle",locType:"chaise"}); }}>
+                  <PlusIcon/> Ajouter
+                </Btn>
+              )}
+              {isAdmin&&tab==="events"&&<Btn small onClick={()=>{setModal("addEvent");setForm({});}}><PlusIcon/> Ajouter</Btn>}
+              <button onClick={()=>{setSession(null);setTab("dashboard");}} style={{ background:"#0C1322", border:"1px solid #1A2A40", borderRadius:"8px", padding:"0.35rem", color:"#5A7090", cursor:"pointer", display:"flex" }}><LogoutIcon size={16}/></button>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ padding:"0.6rem 1.2rem" }}>
+
+          {/* ── DASHBOARD ──────────────────────────────────────────────────── */}
+          {tab==="dashboard"&&isAdmin&&(
+            <div>
+              {/* Tarif actuel */}
+              <div style={{ background:"linear-gradient(135deg,#0D1A10,#0A1020)", border:"1px solid #4ADE8020", borderRadius:"12px", padding:"0.75rem 1rem", marginBottom:"0.75rem", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                <div>
+                  <p style={{ color:"#4A6080", fontSize:"0.68rem", fontWeight:600, textTransform:"uppercase" }}>Cotisation mensuelle {CURRENT_YEAR}</p>
+                  <p style={{ color:"#4ADE80", fontFamily:"Syne", fontSize:"1.2rem", fontWeight:800 }}>{fmt(getTarif(CURRENT_YEAR))}<span style={{ color:"#4ADE8080", fontSize:"0.72rem" }}>/mois</span></p>
+                </div>
+                <button onClick={()=>{setModal("editTarif");setForm({tarifYear:CURRENT_YEAR,tarifMontant:getTarif(CURRENT_YEAR)});}} style={{ background:"#0C1322", border:"1px solid #1A3A20", borderRadius:"8px", padding:"0.4rem 0.7rem", color:"#4ADE80", fontSize:"0.73rem", fontWeight:600, cursor:"pointer", display:"flex", alignItems:"center", gap:"0.3rem" }}><EditIcon size={13}/> Modifier</button>
+              </div>
+
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0.6rem", marginBottom:"0.75rem" }}>
+                {[
+                  {label:"Membres",   value:stats.totalMembers,                                                     color:"#60A5FA",bg:"#0A1930"},
+                  {label:"À jour",    value:`${stats.upToDate}/${stats.totalMembers}`,                              color:"#4ADE80",bg:"#041A0E"},
+                  {label:"Cotisations",value:new Intl.NumberFormat("fr-FR").format(stats.collMensuel+stats.collExcep),sub:"FCFA",color:"#FBBF24",bg:"#1A1000"},
+                  {label:"Locations",  value:new Intl.NumberFormat("fr-FR").format(stats.totalLocYear),sub:"FCFA", color:"#FB923C",bg:"#1A0E00"},
+                ].map(s=>(
+                  <div key={s.label} style={{ background:s.bg, borderRadius:"14px", padding:"0.85rem", border:`1px solid ${s.color}18` }}>
+                    <p style={{ color:"#4A6080", fontSize:"0.65rem", fontWeight:600, textTransform:"uppercase", letterSpacing:"0.08em" }}>{s.label}</p>
+                    <p style={{ color:s.color, fontSize:"1.3rem", fontWeight:800, fontFamily:"Syne", lineHeight:1.1, marginTop:"0.2rem" }}>{s.value}</p>
+                    {s.sub&&<p style={{ color:s.color+"99", fontSize:"0.62rem", fontWeight:600 }}>{s.sub}</p>}
+                  </div>
+                ))}
+              </div>
+
+              {/* Total recettes */}
+              <div style={{ background:"linear-gradient(135deg,#041A0E,#0A1020)", border:"1px solid #4ADE8030", borderRadius:"14px", padding:"1rem", marginBottom:"0.75rem", textAlign:"center" }}>
+                <p style={{ color:"#4A6080", fontSize:"0.7rem", fontWeight:600, textTransform:"uppercase" }}>Total recettes {CURRENT_YEAR}</p>
+                <p style={{ color:"#4ADE80", fontFamily:"Syne", fontSize:"1.8rem", fontWeight:800 }}>{fmt(stats.totalRecettes)}</p>
+              </div>
+
+              {/* Retards */}
+              <p style={{ color:"#4A6080", fontSize:"0.7rem", textTransform:"uppercase", letterSpacing:"0.1em", fontWeight:600, marginBottom:"0.5rem" }}>En retard (mensuel)</p>
+              {members.filter(m=>getMemberStatus(m,CURRENT_YEAR)!=="ok").map(m=>{
+                const retard=getMonthsDue(m,CURRENT_YEAR)-getPaidMonths(m.id,CURRENT_YEAR);
+                return (
+                  <div key={m.id} style={{ background:"#0C1322", border:"1px solid #1A2A40", borderRadius:"12px", padding:"0.75rem", marginBottom:"0.45rem", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:"0.6rem" }}>
+                      <div style={{ width:"32px", height:"32px", borderRadius:"50%", background:"linear-gradient(135deg,#1D6AF5,#7C3AED)", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700, color:"#fff", flexShrink:0, fontSize:"0.85rem" }}>{m.name[0]}</div>
+                      <div>
+                        <p style={{ color:"#E8F0FF", fontWeight:600, fontSize:"0.85rem" }}>{m.name}</p>
+                        <p style={{ color:"#F87171", fontSize:"0.68rem" }}>{retard} mois • {fmt(retard*getTarif(CURRENT_YEAR))}</p>
+                      </div>
+                    </div>
+                    <StatusBadge status={getMemberStatus(m,CURRENT_YEAR)}/>
+                  </div>
+                );
+              })}
+              {members.filter(m=>getMemberStatus(m,CURRENT_YEAR)!=="ok").length===0&&<div style={{ textAlign:"center", color:"#4ADE80", padding:"0.85rem", background:"#041A0E", borderRadius:"12px", fontSize:"0.82rem" }}>✓ Tous les membres sont à jour !</div>}
+
+              {/* Prochains events */}
+              <p style={{ color:"#4A6080", fontSize:"0.7rem", textTransform:"uppercase", letterSpacing:"0.1em", fontWeight:600, margin:"0.85rem 0 0.5rem" }}>Prochains événements</p>
+              {events.filter(e=>new Date(e.date)>=new Date()).sort((a,b)=>new Date(a.date)-new Date(b.date)).slice(0,3).map(e=>(
+                <div key={e.id} style={{ background:"#0C1322", border:"1px solid #1A3060", borderRadius:"12px", padding:"0.75rem", marginBottom:"0.45rem", display:"flex", gap:"0.7rem" }}>
+                  <div style={{ background:"#0D1F40", borderRadius:"10px", padding:"0.4rem 0.55rem", textAlign:"center", minWidth:"38px", flexShrink:0 }}>
+                    <p style={{ color:"#60A5FA", fontWeight:800, fontSize:"0.95rem", fontFamily:"Syne", lineHeight:1 }}>{new Date(e.date).getDate()}</p>
+                    <p style={{ color:"#3A5A8A", fontSize:"0.58rem", fontWeight:600 }}>{new Date(e.date).toLocaleDateString("fr-FR",{month:"short"}).toUpperCase()}</p>
+                  </div>
+                  <div><p style={{ color:"#E8F0FF", fontWeight:600, fontSize:"0.85rem" }}>{e.title}</p><p style={{ color:"#5A7090", fontSize:"0.7rem" }}>{e.time}{e.location&&` — ${e.location}`}</p></div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Dashboard membre */}
+          {tab==="dashboard"&&isMember&&(()=>{
+            const me=members.find(m=>m.id===myId); if(!me) return null;
+            const due=getMonthsDue(me,CURRENT_YEAR), paid=getPaidMonths(me.id,CURRENT_YEAR), retard=Math.max(0,due-paid), excep=getTotalExcep(me.id,CURRENT_YEAR), tarif=getTarif(CURRENT_YEAR);
+            return (
+              <div>
+                <div style={{ background:"linear-gradient(135deg,#0D1F40,#0C1322)", border:"1px solid #1A3060", borderRadius:"16px", padding:"1.25rem", marginBottom:"1rem", textAlign:"center" }}>
+                  <div style={{ width:"52px", height:"52px", borderRadius:"50%", background:"linear-gradient(135deg,#1D6AF5,#7C3AED)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"1.3rem", fontWeight:700, color:"#fff", margin:"0 auto 0.6rem" }}>{me.name[0]}</div>
+                  <p style={{ color:"#E8F0FF", fontWeight:700, fontSize:"1.05rem" }}>{me.name}</p>
+                  <p style={{ color:"#5A7090", fontSize:"0.73rem", marginBottom:"0.6rem" }}>Adhérent depuis {new Date(me.joinDate).toLocaleDateString("fr-FR")}</p>
+                  <StatusBadge status={getMemberStatus(me,CURRENT_YEAR)}/>
+                  <p style={{ color:"#3A5A8A", fontSize:"0.72rem", marginTop:"0.5rem" }}>Cotisation : <strong style={{ color:"#FBBF24" }}>{fmt(tarif)}/mois</strong></p>
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0.65rem", marginBottom:"1rem" }}>
+                  <div style={{ background:"#041A0E", borderRadius:"14px", padding:"0.9rem", border:"1px solid #4ADE8018" }}>
+                    <p style={{ color:"#4A6080", fontSize:"0.65rem", fontWeight:600, textTransform:"uppercase" }}>Mois payés</p>
+                    <p style={{ color:"#4ADE80", fontSize:"1.35rem", fontWeight:800, fontFamily:"Syne" }}>{paid}/{due}</p>
+                    <p style={{ color:"#4ADE8080", fontSize:"0.62rem" }}>{fmt(paid*tarif)}</p>
+                  </div>
+                  <div style={{ background:excep>0?"#1E0A3C":"#0A1020", borderRadius:"14px", padding:"0.9rem", border:"1px solid #C084FC18" }}>
+                    <p style={{ color:"#4A6080", fontSize:"0.65rem", fontWeight:600, textTransform:"uppercase" }}>Exceptionnel</p>
+                    <p style={{ color:"#C084FC", fontSize:"0.9rem", fontWeight:800, fontFamily:"Syne" }}>{excep>0?fmt(excep):"—"}</p>
+                  </div>
+                </div>
+                <MonthGrid member={me} year={CURRENT_YEAR} clickable={false}/>
+              </div>
+            );
+          })()}
+
+          {/* ── MEMBRES ────────────────────────────────────────────────────── */}
+          {tab==="members"&&(
+            <div>
+              {isAdmin&&<div style={{ position:"relative", marginBottom:"0.9rem" }}>
+                <div style={{ position:"absolute", left:"0.7rem", top:"50%", transform:"translateY(-50%)", color:"#2A3D5E" }}><SearchIcon/></div>
+                <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Rechercher..." style={{ width:"100%", background:"#0C1322", border:"1px solid #1A2A40", borderRadius:"10px", padding:"0.6rem 0.75rem 0.6rem 2.4rem", color:"#E8F0FF", fontSize:"0.88rem", outline:"none" }}/>
+              </div>}
+              {filteredMembers.map(m=>{
+                const status=getMemberStatus(m,CURRENT_YEAR), excep=getTotalExcep(m.id,CURRENT_YEAR);
+                return (
+                  <div key={m.id} style={{ background:"#0C1322", border:"1px solid #1A2A40", borderRadius:"14px", padding:"0.9rem", marginBottom:"0.65rem" }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:"0.65rem" }}>
+                      <div style={{ display:"flex", gap:"0.65rem", alignItems:"center" }}>
+                        <div style={{ width:"38px", height:"38px", borderRadius:"50%", background:"linear-gradient(135deg,#1D6AF5,#7C3AED)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"0.95rem", fontWeight:700, color:"#fff", flexShrink:0 }}>{m.name[0]}</div>
+                        <div>
+                          <p style={{ color:"#E8F0FF", fontWeight:700, fontSize:"0.92rem" }}>{m.name}</p>
+                          <div style={{ display:"flex", alignItems:"center", gap:"0.4rem" }}>
+                            {m.phone&&<p style={{ color:"#5A7090", fontSize:"0.7rem" }}>{m.phone}</p>}
+                            {isAdmin&&<span style={{ fontSize:"0.65rem", color:m.password?"#4ADE80":"#FB923C", fontWeight:600 }}>{m.password?"🔐 MDP défini":"⚠ Sans MDP"}</span>}
+                          </div>
+                        </div>
+                      </div>
+                      <StatusBadge status={status}/>
+                    </div>
+                    <MonthGrid member={m} year={CURRENT_YEAR} clickable={isAdmin}/>
+                    {excep>0&&<div style={{ display:"flex", alignItems:"center", gap:"0.5rem", marginTop:"0.5rem", background:"#1E0A3C", borderRadius:"8px", padding:"0.4rem 0.65rem" }}><StarIcon size={12}/><span style={{ color:"#C084FC", fontSize:"0.73rem", fontWeight:600 }}>Exceptionnel : {fmt(excep)}</span></div>}
+                    {isAdmin&&(
+                      <div style={{ display:"flex", gap:"0.4rem", marginTop:"0.6rem", flexWrap:"wrap" }}>
+                        <Btn small onClick={()=>{setModal("addCotisation");setForm({memberId:m.id,payType:"mensuelle"});}}>+ Mensuel</Btn>
+                        <Btn small variant="purple" onClick={()=>{setModal("addCotisation");setForm({memberId:m.id,payType:"exceptionnelle"});}}>+ Except.</Btn>
+                        <Btn small variant="ghost" onClick={()=>{setSelMember(m);setModal("memberDetail");}}>Détails</Btn>
+                        {m.password&&<Btn small variant="orange" onClick={()=>resetMemberPwd(m.id)}><KeyIcon size={12}/></Btn>}
+                        <Btn small variant="danger" onClick={()=>deleteMember(m.id)}><TrashIcon/></Btn>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* ── COTISATIONS ────────────────────────────────────────────────── */}
+          {tab==="cotisations"&&(
+            <div>
+              {isAdmin&&(
+                <div style={{ background:"#0C1322", border:"1px solid #1A3A20", borderRadius:"12px", padding:"0.7rem 1rem", marginBottom:"0.85rem" }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"0.4rem" }}>
+                    <p style={{ color:"#4ADE80", fontSize:"0.7rem", fontWeight:700, textTransform:"uppercase" }}>📋 Tarifs</p>
+                    <button onClick={()=>{setModal("editTarif");setForm({tarifYear:CURRENT_YEAR+1,tarifMontant:"",isNew:true});}} style={{ background:"none", border:"1px solid #1A3A20", borderRadius:"6px", padding:"2px 7px", color:"#4ADE80", fontSize:"0.65rem", cursor:"pointer" }}>+ Nouvelle année</button>
+                  </div>
+                  {Object.entries(tarifs).sort((a,b)=>b[0]-a[0]).map(([year,montant])=>(
+                    <div key={year} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"0.2rem" }}>
+                      <span style={{ color:parseInt(year)===CURRENT_YEAR?"#FBBF24":"#7A90B0", fontSize:"0.8rem", fontWeight:parseInt(year)===CURRENT_YEAR?700:400 }}>{year}{parseInt(year)===CURRENT_YEAR&&" ★"}</span>
+                      <div style={{ display:"flex", alignItems:"center", gap:"0.5rem" }}>
+                        <span style={{ color:parseInt(year)===CURRENT_YEAR?"#4ADE80":"#5A7090", fontFamily:"Syne", fontWeight:700, fontSize:"0.88rem" }}>{fmt(montant)}/mois</span>
+                        <button onClick={()=>{setModal("editTarif");setForm({tarifYear:parseInt(year),tarifMontant:montant});}} style={{ background:"none", border:"none", color:"#3A5A8A", cursor:"pointer" }}><EditIcon size={13}/></button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div style={{ display:"flex", gap:"0.4rem", marginBottom:"0.75rem", flexWrap:"wrap" }}>
+                {[CURRENT_YEAR,CURRENT_YEAR-1].map(y=>(
+                  <button key={y} onClick={()=>setFilterYear(y)} style={{ background:filterYear===y?"linear-gradient(135deg,#1D6AF5,#1558CC)":"#0C1322", color:filterYear===y?"#fff":"#5A7090", border:`1px solid ${filterYear===y?"transparent":"#1A2A40"}`, borderRadius:"20px", padding:"0.28rem 0.8rem", fontSize:"0.76rem", fontWeight:600, cursor:"pointer" }}>{y}</button>
+                ))}
+                <div style={{ width:"1px", background:"#1A2A40" }}/>
+                {[["all","Tout"],["mensuelle","Mensuel"],["exceptionnelle","Except."]].map(([v,l])=>(
+                  <button key={v} onClick={()=>setFilterType(v)} style={{ background:filterType===v?(v==="exceptionnelle"?"linear-gradient(135deg,#7C3AED,#6D28D9)":"linear-gradient(135deg,#1D6AF5,#1558CC)"):"#0C1322", color:filterType===v?"#fff":"#5A7090", border:`1px solid ${filterType===v?"transparent":"#1A2A40"}`, borderRadius:"20px", padding:"0.28rem 0.8rem", fontSize:"0.76rem", fontWeight:600, cursor:"pointer" }}>{l}</button>
+                ))}
+              </div>
+
+              {isAdmin&&(
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0.6rem", marginBottom:"0.85rem" }}>
+                  <div style={{ background:"#0A1930", border:"1px solid #60A5FA18", borderRadius:"12px", padding:"0.8rem" }}>
+                    <p style={{ color:"#60A5FA", fontSize:"0.65rem", fontWeight:600, textTransform:"uppercase" }}>Mensuel {filterYear}</p>
+                    <p style={{ color:"#60A5FA", fontFamily:"Syne", fontSize:"1rem", fontWeight:800 }}>{fmt(payments.filter(p=>p.year===filterYear&&p.type==="mensuelle").reduce((s,p)=>s+p.amount,0))}</p>
+                    <p style={{ color:"#3A5A8A", fontSize:"0.62rem" }}>Tarif : {fmt(getTarif(filterYear))}/mois</p>
+                  </div>
+                  <div style={{ background:"#1E0A3C", border:"1px solid #C084FC18", borderRadius:"12px", padding:"0.8rem" }}>
+                    <p style={{ color:"#C084FC", fontSize:"0.65rem", fontWeight:600, textTransform:"uppercase" }}>Exceptionnel {filterYear}</p>
+                    <p style={{ color:"#C084FC", fontFamily:"Syne", fontSize:"1rem", fontWeight:800 }}>{fmt(payments.filter(p=>p.year===filterYear&&p.type==="exceptionnelle").reduce((s,p)=>s+p.amount,0))}</p>
+                  </div>
+                </div>
+              )}
+
+              {isAdmin&&filterType!=="exceptionnelle"&&(
+                <>
+                  <p style={{ color:"#4A6080", fontSize:"0.7rem", textTransform:"uppercase", letterSpacing:"0.1em", fontWeight:600, marginBottom:"0.5rem" }}>Suivi mensuel</p>
+                  <div style={{ background:"#0C1322", border:"1px solid #1A2A40", borderRadius:"14px", overflow:"hidden", marginBottom:"0.85rem" }}>
+                    <div style={{ display:"flex", padding:"0.4rem 0.75rem", borderBottom:"1px solid #1A2A40", gap:"2px" }}>
+                      <div style={{ width:"70px", flexShrink:0 }}/>
+                      {MOIS.map(mo=><div key={mo} style={{ flex:1, textAlign:"center", color:"#3A5A8A", fontSize:"0.5rem", fontWeight:700 }}>{mo}</div>)}
+                    </div>
+                    {members.map((m,mi)=>(
+                      <div key={m.id} style={{ display:"flex", padding:"0.4rem 0.75rem", borderBottom:mi<members.length-1?"1px solid #0F1C30":"none", alignItems:"center", gap:"2px" }}>
+                        <div style={{ width:"70px", flexShrink:0, color:"#C0D0E8", fontSize:"0.68rem", fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{m.name.split(" ")[0]}</div>
+                        {MOIS.map((_,i)=>{
+                          const month=i+1, jd=new Date(m.joinDate), jy=jd.getFullYear(), jm=jd.getMonth()+1;
+                          const na=(filterYear===jy&&month<jm)||(filterYear===CURRENT_YEAR&&month>CURRENT_MONTH)||filterYear>CURRENT_YEAR;
+                          const p=hasPaidMonth(m.id,filterYear,month);
+                          return (
+                            <div key={month} onClick={()=>!na&&!p&&filterYear===CURRENT_YEAR&&quickPayMonth(m.id,month)}
+                              style={{ flex:1, height:"20px", borderRadius:"3px", background:na?"#090E18":p?"#14401E":"#2D0808", display:"flex", alignItems:"center", justifyContent:"center", cursor:!na&&!p&&filterYear===CURRENT_YEAR?"pointer":"default" }}>
+                              {p&&<span style={{ color:"#4ADE80", fontSize:"0.58rem" }}>✓</span>}
+                              {!p&&!na&&<span style={{ color:"#7F1D1D", fontSize:"0.52rem" }}>✕</span>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {isMember&&(()=>{const me=members.find(m=>m.id===myId);return me?<MonthGrid member={me} year={CURRENT_YEAR} clickable={false}/>:null;})()}
+
+              <p style={{ color:"#4A6080", fontSize:"0.7rem", textTransform:"uppercase", letterSpacing:"0.1em", fontWeight:600, margin:"0.75rem 0 0.5rem" }}>Historique</p>
+              {payments.filter(p=>{ if(isMember&&p.memberId!==myId) return false; if(isAdmin&&p.year!==filterYear) return false; if(filterType!=="all"&&p.type!==filterType) return false; return true; }).sort((a,b)=>new Date(b.date)-new Date(a.date)).map(p=>{
+                const member=members.find(m=>m.id===p.memberId);
+                return (
+                  <div key={p.id} style={{ background:"#0C1322", border:`1px solid ${p.type==="exceptionnelle"?"#C084FC20":"#1A2A40"}`, borderRadius:"11px", padding:"0.7rem 1rem", marginBottom:"0.4rem", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"0.5rem" }}>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      {isAdmin&&<p style={{ color:"#E8F0FF", fontWeight:600, fontSize:"0.84rem" }}>{member?.name}</p>}
+                      <div style={{ display:"flex", alignItems:"center", gap:"0.4rem", marginTop:isAdmin?"0.2rem":"0" }}>
+                        <TypeBadge type={p.type}/>
+                        <p style={{ color:"#5A7090", fontSize:"0.66rem" }}>{p.type==="mensuelle"?`${MOIS[p.month-1]} ${p.year}`:p.label} • {new Date(p.date).toLocaleDateString("fr-FR")} • {p.method}</p>
+                      </div>
+                    </div>
+                    <div style={{ display:"flex", alignItems:"center", gap:"0.4rem", flexShrink:0 }}>
+                      <p style={{ color:p.type==="exceptionnelle"?"#C084FC":"#4ADE80", fontWeight:700, fontSize:"0.9rem", fontFamily:"Syne" }}>+{fmt(p.amount)}</p>
+                      {isAdmin&&<button onClick={()=>deletePayment(p.id)} style={{ background:"none", border:"none", color:"#3A2A4A", cursor:"pointer" }}><TrashIcon size={14}/></button>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* ── LOCATIONS ──────────────────────────────────────────────────── */}
+          {tab==="locations"&&(
+            <div>
+              {/* Prix unitaires */}
+              {isAdmin&&(
+                <div style={{ background:"#0C1322", border:"1px solid #1A2A40", borderRadius:"12px", padding:"0.75rem 1rem", marginBottom:"0.85rem" }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"0.5rem" }}>
+                    <p style={{ color:"#FB923C", fontSize:"0.7rem", fontWeight:700, textTransform:"uppercase" }}>Prix unitaires</p>
+                    <button onClick={()=>{setModal("editPrix");setForm({prixChaise:prix.chaise,prixBache:prix.bache});}} style={{ background:"none", border:"1px solid #2A2A40", borderRadius:"6px", padding:"2px 7px", color:"#7A90B0", fontSize:"0.65rem", cursor:"pointer", display:"flex", alignItems:"center", gap:"3px" }}><EditIcon size={11}/> Modifier</button>
+                  </div>
+                  <div style={{ display:"flex", gap:"0.5rem" }}>
+                    <div style={{ flex:1, background:"#0A1020", borderRadius:"8px", padding:"0.5rem", textAlign:"center" }}>
+                      <p style={{ color:"#7A90B0", fontSize:"0.65rem" }}>🪑 Chaise</p>
+                      <p style={{ color:"#FB923C", fontFamily:"Syne", fontWeight:700, fontSize:"0.9rem" }}>{fmt(prix.chaise)}</p>
+                    </div>
+                    <div style={{ flex:1, background:"#0A1020", borderRadius:"8px", padding:"0.5rem", textAlign:"center" }}>
+                      <p style={{ color:"#7A90B0", fontSize:"0.65rem" }}>🏕 Bâche</p>
+                      <p style={{ color:"#FB923C", fontFamily:"Syne", fontWeight:700, fontSize:"0.9rem" }}>{fmt(prix.bache)}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Totaux locations */}
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"0.5rem", marginBottom:"0.85rem" }}>
+                {[
+                  {label:"Chaises",value:fmt(locations.filter(l=>l.date.startsWith(String(CURRENT_YEAR))&&l.type==="chaise").reduce((s,l)=>s+l.montant,0)),color:"#60A5FA"},
+                  {label:"Bâches", value:fmt(locations.filter(l=>l.date.startsWith(String(CURRENT_YEAR))&&l.type==="bache").reduce((s,l)=>s+l.montant,0)),color:"#FBBF24"},
+                  {label:"Total",  value:fmt(locations.filter(l=>l.date.startsWith(String(CURRENT_YEAR))).reduce((s,l)=>s+l.montant,0)),color:"#4ADE80"},
+                ].map(s=>(
+                  <div key={s.label} style={{ background:"#0C1322", border:`1px solid ${s.color}18`, borderRadius:"12px", padding:"0.65rem", textAlign:"center" }}>
+                    <p style={{ color:"#4A6080", fontSize:"0.62rem", fontWeight:600, textTransform:"uppercase" }}>{s.label}</p>
+                    <p style={{ color:s.color, fontFamily:"Syne", fontSize:"0.78rem", fontWeight:800 }}>{s.value}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Liste */}
+              {locations.sort((a,b)=>new Date(b.date)-new Date(a.date)).map(l=>(
+                <div key={l.id} style={{ background:"#0C1322", border:"1px solid #1A2A40", borderRadius:"12px", padding:"0.85rem", marginBottom:"0.5rem" }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                    <div>
+                      <div style={{ display:"flex", alignItems:"center", gap:"0.5rem", marginBottom:"0.2rem" }}>
+                        <span style={{ fontSize:"1.1rem" }}>{l.type==="chaise"?"🪑":"🏕"}</span>
+                        <p style={{ color:"#E8F0FF", fontWeight:700, fontSize:"0.9rem" }}>{l.type==="chaise"?"Location de chaises":"Location de bâche"}</p>
+                      </div>
+                      <p style={{ color:"#5A7090", fontSize:"0.72rem" }}>{l.client&&<><strong style={{ color:"#8A9BC0" }}>{l.client}</strong> • </>}{new Date(l.date).toLocaleDateString("fr-FR")} • {l.method}</p>
+                      <p style={{ color:"#3A5070", fontSize:"0.7rem", marginTop:"0.15rem" }}>{fmtN(l.quantite)} {l.type==="chaise"?"chaises":"bâches"} × {fmt(l.prixUnit)}{l.notes&&<> — {l.notes}</>}</p>
+                    </div>
+                    <div style={{ textAlign:"right" }}>
+                      <p style={{ color:"#FB923C", fontWeight:800, fontSize:"1rem", fontFamily:"Syne" }}>{fmt(l.montant)}</p>
+                      {isAdmin&&<button onClick={()=>deleteLocation(l.id)} style={{ background:"none", border:"none", color:"#3A2A30", cursor:"pointer", marginTop:"0.25rem" }}><TrashIcon size={14}/></button>}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {locations.length===0&&<p style={{ color:"#3A5070", textAlign:"center", padding:"2rem", fontSize:"0.85rem" }}>Aucune location enregistrée</p>}
+            </div>
+          )}
+
+          {/* ── ÉVÉNEMENTS ─────────────────────────────────────────────────── */}
+          {tab==="events"&&(
+            <div>
+              {events.sort((a,b)=>new Date(a.date)-new Date(b.date)).map(e=>{
+                const isPast=new Date(e.date)<new Date();
+                return (
+                  <div key={e.id} style={{ background:"#0C1322", border:`1px solid ${isPast?"#1A2A40":"#1A3060"}`, borderRadius:"14px", marginBottom:"0.75rem", opacity:isPast?0.6:1 }}>
+                    <div style={{ padding:"1rem" }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                        <div>
+                          <p style={{ color:isPast?"#5A7090":"#60A5FA", fontSize:"0.68rem", fontWeight:600, textTransform:"uppercase", letterSpacing:"0.08em" }}>{isPast?"Passé":"À venir"} • {new Date(e.date).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"})}</p>
+                          <p style={{ color:"#E8F0FF", fontWeight:700, fontSize:"1rem", marginTop:"0.2rem", fontFamily:"Syne" }}>{e.title}</p>
+                          <p style={{ color:"#5A7090", fontSize:"0.75rem" }}>{e.time}{e.location&&` — ${e.location}`}</p>
+                          {e.description&&<p style={{ color:"#3A5070", fontSize:"0.72rem", marginTop:"0.2rem" }}>{e.description}</p>}
+                        </div>
+                        {isAdmin&&<button onClick={()=>deleteEvent(e.id)} style={{ background:"none", border:"none", color:"#2A3D5E", cursor:"pointer" }}><TrashIcon/></button>}
+                      </div>
+                      <div style={{ marginTop:"0.75rem" }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", marginBottom:"0.3rem" }}>
+                          <p style={{ color:"#5A7090", fontSize:"0.7rem" }}>Participants</p>
+                          <p style={{ color:"#60A5FA", fontSize:"0.7rem", fontWeight:700 }}>{e.participants.length}/{e.maxParticipants}</p>
+                        </div>
+                        <div style={{ background:"#0A1020", borderRadius:"4px", height:"4px", marginBottom:"0.45rem", overflow:"hidden" }}>
+                          <div style={{ background:"linear-gradient(90deg,#1D6AF5,#60A5FA)", height:"100%", width:`${Math.min(100,(e.participants.length/e.maxParticipants)*100)}%` }}/>
+                        </div>
+                        {isAdmin?(
+                          <div style={{ display:"flex", flexWrap:"wrap", gap:"0.35rem" }}>
+                            {members.map(m=>{const isIn=e.participants.includes(m.id);return(
+                              <button key={m.id} onClick={()=>toggleParticipant(e.id,m.id)} style={{ background:isIn?"#0D1F40":"#0A1020", border:`1px solid ${isIn?"#1D6AF5":"#1A2A40"}`, borderRadius:"20px", padding:"3px 9px", color:isIn?"#60A5FA":"#5A7090", fontSize:"0.7rem", fontWeight:600, cursor:"pointer", display:"flex", alignItems:"center", gap:"3px" }}>
+                                {isIn&&<span style={{ color:"#4ADE80", fontSize:"0.6rem" }}>✓</span>}{m.name.split(" ")[0]}
+                              </button>
+                            );})}
+                          </div>
+                        ):(
+                          <p style={{ color:e.participants.includes(myId)?"#4ADE80":"#5A7090", fontSize:"0.78rem", fontWeight:600 }}>
+                            {e.participants.includes(myId)?"✓ Vous participez":"Vous n'êtes pas inscrit"}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Nav */}
+        <div style={{ position:"fixed", bottom:0, left:"50%", transform:"translateX(-50%)", width:"100%", maxWidth:"430px", background:"#060C18", borderTop:"1px solid #1A2A40", display:"flex", padding:"0.4rem 0", zIndex:20 }}>
+          {NAV.map(n=>(
+            <button key={n.id} onClick={()=>setTab(n.id)} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:"2px", background:"none", border:"none", cursor:"pointer", color:tab===n.id?"#60A5FA":"#2A3D5E", padding:"0.3rem 0" }}>
+              {n.icon}
+              <span style={{ fontSize:"0.55rem", fontWeight:tab===n.id?700:500 }}>{n.id==="members"&&isMember?"Profil":n.label}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* ── MODALS ───────────────────────────────────────────────────────── */}
+
+        {/* BILAN */}
+        {modal==="bilan"&&(
+          <Modal title="📊 Bilan Financier" onClose={()=>setModal(null)} wide>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0.75rem", marginBottom:"1rem" }}>
+              <Inp label="Du" type="date" value={bilan.from} onChange={e=>setBilan(b=>({...b,from:e.target.value}))}/>
+              <Inp label="Au" type="date" value={bilan.to} onChange={e=>setBilan(b=>({...b,to:e.target.value}))}/>
+            </div>
+            <div ref={bilanRef}>
+              <BilanContent dateFrom={bilan.from} dateTo={bilan.to} payments={payments} locations={locations} members={members} tarifs={tarifs}/>
+            </div>
+            <div style={{ display:"flex", gap:"0.5rem", marginTop:"1.25rem", justifyContent:"flex-end" }}>
+              <Btn variant="ghost" onClick={()=>setModal(null)}>Fermer</Btn>
+              <Btn variant="teal" onClick={printBilan}><PrintIcon size={14}/> Imprimer / PDF</Btn>
+            </div>
+          </Modal>
+        )}
+
+        {/* TARIF */}
+        {modal==="editTarif"&&isAdmin&&(
+          <Modal title={form.isNew?"Nouveau tarif":"Modifier le tarif"} onClose={()=>setModal(null)}>
+            <div style={{ background:"#0A1020", borderRadius:"10px", padding:"0.75rem", marginBottom:"1rem" }}>
+              <p style={{ color:"#7A90B0", fontSize:"0.78rem" }}>Les paiements déjà enregistrés ne sont pas modifiés. Seuls les nouveaux paiements utiliseront ce tarif.</p>
+            </div>
+            <Sel label="Année" value={form.tarifYear||CURRENT_YEAR} onChange={e=>setForm(p=>({...p,tarifYear:parseInt(e.target.value)}))}>
+              {[CURRENT_YEAR+2,CURRENT_YEAR+1,CURRENT_YEAR,CURRENT_YEAR-1,CURRENT_YEAR-2].map(y=><option key={y} value={y}>{y}</option>)}
+            </Sel>
+            <Inp label="Montant mensuel (FCFA) *" type="number" value={form.tarifMontant||""} onChange={e=>setForm(p=>({...p,tarifMontant:e.target.value}))} placeholder="Ex : 1500"/>
+            {form.tarifMontant&&<p style={{ color:"#4ADE80", fontSize:"0.8rem", marginBottom:"0.75rem" }}>→ Annuel complet : {fmt(parseFloat(form.tarifMontant)*12)}</p>}
+            <div style={{ display:"flex", gap:"0.5rem", justifyContent:"flex-end" }}>
+              <Btn variant="ghost" onClick={()=>setModal(null)}>Annuler</Btn>
+              <Btn variant="teal" onClick={handleSaveTarif}><CheckIcon/> Enregistrer</Btn>
+            </div>
+          </Modal>
+        )}
+
+        {/* PRIX LOCATIONS */}
+        {modal==="editPrix"&&isAdmin&&(
+          <Modal title="Modifier les prix unitaires" onClose={()=>setModal(null)}>
+            <Inp label="🪑 Prix par chaise (FCFA)" type="number" value={form.prixChaise||""} onChange={e=>setForm(p=>({...p,prixChaise:e.target.value}))} placeholder={String(prix.chaise)}/>
+            <Inp label="🏕 Prix par bâche (FCFA)" type="number" value={form.prixBache||""} onChange={e=>setForm(p=>({...p,prixBache:e.target.value}))} placeholder={String(prix.bache)}/>
+            <div style={{ display:"flex", gap:"0.5rem", justifyContent:"flex-end" }}>
+              <Btn variant="ghost" onClick={()=>setModal(null)}>Annuler</Btn>
+              <Btn variant="teal" onClick={()=>{ setPrix({chaise:parseFloat(form.prixChaise||prix.chaise),bache:parseFloat(form.prixBache||prix.bache)}); setModal(null); }}><CheckIcon/> Enregistrer</Btn>
+            </div>
+          </Modal>
+        )}
+
+        {/* AJOUTER MEMBRE */}
+        {modal==="addMember"&&isAdmin&&(
+          <Modal title="Nouveau membre" onClose={()=>setModal(null)}>
+            <Inp label="Nom complet *" value={form.name||""} onChange={e=>setForm(p=>({...p,name:e.target.value}))} placeholder="Kouassi Aman"/>
+            <Inp label="Téléphone" value={form.phone||""} onChange={e=>setForm(p=>({...p,phone:e.target.value}))} placeholder="07 00 00 00 00"/>
+            <Inp label="Email" type="email" value={form.email||""} onChange={e=>setForm(p=>({...p,email:e.target.value}))} placeholder="email@exemple.com"/>
+            <Inp label="Date d'adhésion" type="date" value={form.joinDate||today()} onChange={e=>setForm(p=>({...p,joinDate:e.target.value}))}/>
+            <div style={{ background:"#0A1020", borderRadius:"8px", padding:"0.6rem", marginBottom:"0.5rem" }}>
+              <p style={{ color:"#60A5FA", fontSize:"0.75rem" }}>🔐 Le membre choisira son mot de passe à sa première connexion.</p>
+            </div>
+            <div style={{ display:"flex", gap:"0.5rem", justifyContent:"flex-end" }}>
+              <Btn variant="ghost" onClick={()=>setModal(null)}>Annuler</Btn>
+              <Btn onClick={handleAddMember}>Ajouter</Btn>
+            </div>
+          </Modal>
+        )}
+
+        {/* AJOUTER COTISATION */}
+        {modal==="addCotisation"&&isAdmin&&(
+          <Modal title="Enregistrer un paiement" onClose={()=>setModal(null)}>
+            <div style={{ display:"flex", gap:"0.4rem", marginBottom:"1rem" }}>
+              {[["mensuelle","📅 Mensuelle"],["exceptionnelle","⭐ Exceptionnelle"]].map(([v,l])=>(
+                <button key={v} onClick={()=>setForm(p=>({...p,payType:v}))} style={{ flex:1, background:form.payType===v?(v==="exceptionnelle"?"linear-gradient(135deg,#7C3AED,#6D28D9)":"linear-gradient(135deg,#1D6AF5,#1558CC)"):"#0C1322", color:form.payType===v?"#fff":"#5A7090", border:`1px solid ${form.payType===v?"transparent":"#1A2A40"}`, borderRadius:"10px", padding:"0.55rem", fontSize:"0.8rem", fontWeight:700, cursor:"pointer" }}>{l}</button>
+              ))}
+            </div>
+            <Sel label="Membre *" value={form.memberId||""} onChange={e=>setForm(p=>({...p,memberId:e.target.value}))}>
+              <option value="">Sélectionner un membre</option>
+              {members.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+            </Sel>
+            {form.payType==="mensuelle"?(
+              <>
+                <Sel label="Année" value={form.year||CURRENT_YEAR} onChange={e=>setForm(p=>({...p,year:parseInt(e.target.value)}))}>
+                  {[CURRENT_YEAR,CURRENT_YEAR-1].map(y=><option key={y} value={y}>{y}</option>)}
+                </Sel>
+                <Sel label="Mois *" value={form.month||""} onChange={e=>setForm(p=>({...p,month:e.target.value}))}>
+                  <option value="">Choisir le mois</option>
+                  {MOIS.map((mo,i)=><option key={i+1} value={i+1}>{mo}</option>)}
+                </Sel>
+                <div style={{ background:"#0A1020", borderRadius:"8px", padding:"0.55rem 0.75rem", marginBottom:"0.85rem" }}>
+                  <p style={{ color:"#7A90B0", fontSize:"0.72rem" }}>Tarif {form.year||CURRENT_YEAR} : <strong style={{ color:"#FBBF24" }}>{fmt(getTarif(form.year||CURRENT_YEAR))}</strong></p>
+                </div>
+                <Inp label="Montant FCFA" type="number" value={form.amount!==undefined?form.amount:getTarif(form.year||CURRENT_YEAR)} onChange={e=>setForm(p=>({...p,amount:e.target.value}))}/>
+              </>
+            ):(
+              <>
+                <Inp label="Motif *" value={form.label||""} onChange={e=>setForm(p=>({...p,label:e.target.value}))} placeholder="Fête annuelle, Fonds d'urgence…"/>
+                <Inp label="Montant FCFA *" type="number" value={form.amount||""} onChange={e=>setForm(p=>({...p,amount:e.target.value}))} placeholder="Montant libre"/>
+                <Sel label="Année" value={form.year||CURRENT_YEAR} onChange={e=>setForm(p=>({...p,year:parseInt(e.target.value)}))}>
+                  {[CURRENT_YEAR,CURRENT_YEAR-1].map(y=><option key={y} value={y}>{y}</option>)}
+                </Sel>
+              </>
+            )}
+            <Sel label="Mode de paiement" value={form.method||"Espèces"} onChange={e=>setForm(p=>({...p,method:e.target.value}))}>
+              {["Espèces","Mobile Money","Virement","Chèque"].map(m=><option key={m}>{m}</option>)}
+            </Sel>
+            <Inp label="Date" type="date" value={form.date||today()} onChange={e=>setForm(p=>({...p,date:e.target.value}))}/>
+            <div style={{ display:"flex", gap:"0.5rem", justifyContent:"flex-end" }}>
+              <Btn variant="ghost" onClick={()=>setModal(null)}>Annuler</Btn>
+              <Btn variant={form.payType==="exceptionnelle"?"purple":"success"} onClick={handleAddPayment}><CheckIcon/> Valider</Btn>
+            </div>
+          </Modal>
+        )}
+
+        {/* AJOUTER LOCATION */}
+        {modal==="addLocation"&&isAdmin&&(
+          <Modal title="Nouvelle location" onClose={()=>setModal(null)}>
+            <div style={{ display:"flex", gap:"0.4rem", marginBottom:"1rem" }}>
+              {[["chaise","🪑 Chaises"],["bache","🏕 Bâche"]].map(([v,l])=>(
+                <button key={v} onClick={()=>setForm(p=>({...p,locType:v,prixUnit:v==="chaise"?prix.chaise:prix.bache}))} style={{ flex:1, background:form.locType===v?"linear-gradient(135deg,#D97706,#B45309)":"#0C1322", color:form.locType===v?"#fff":"#5A7090", border:`1px solid ${form.locType===v?"transparent":"#1A2A40"}`, borderRadius:"10px", padding:"0.55rem", fontSize:"0.8rem", fontWeight:700, cursor:"pointer" }}>{l}</button>
+              ))}
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0.75rem" }}>
+              <Inp label={`Quantité (${form.locType==="chaise"?"chaises":"bâches"}) *`} type="number" value={form.quantite||""} onChange={e=>setForm(p=>({...p,quantite:e.target.value}))} placeholder={form.locType==="chaise"?"Ex : 50":"Ex : 2"}/>
+              <Inp label="Prix unitaire (FCFA)" type="number" value={form.prixUnit||""} onChange={e=>setForm(p=>({...p,prixUnit:e.target.value}))} placeholder={String(form.locType==="chaise"?prix.chaise:prix.bache)}/>
+            </div>
+            {form.quantite&&(form.prixUnit||prix[form.locType||"chaise"])&&(
+              <div style={{ background:"#1A1000", border:"1px solid #FBBF2430", borderRadius:"8px", padding:"0.6rem 0.75rem", marginBottom:"0.85rem", display:"flex", justifyContent:"space-between" }}>
+                <span style={{ color:"#7A90B0", fontSize:"0.78rem" }}>Total</span>
+                <span style={{ color:"#FBBF24", fontWeight:700, fontSize:"0.9rem", fontFamily:"Syne" }}>{fmt(parseFloat(form.quantite||0)*parseFloat(form.prixUnit||prix[form.locType||"chaise"]||0))}</span>
+              </div>
+            )}
+            <Inp label="Client" value={form.client||""} onChange={e=>setForm(p=>({...p,client:e.target.value}))} placeholder="Nom du client / événement"/>
+            <Inp label="Date *" type="date" value={form.date||today()} onChange={e=>setForm(p=>({...p,date:e.target.value}))}/>
+            <Sel label="Mode de paiement" value={form.method||"Espèces"} onChange={e=>setForm(p=>({...p,method:e.target.value}))}>
+              {["Espèces","Mobile Money","Virement","Chèque"].map(m=><option key={m}>{m}</option>)}
+            </Sel>
+            <Inp label="Notes (optionnel)" value={form.notes||""} onChange={e=>setForm(p=>({...p,notes:e.target.value}))} placeholder="Baptême, mariage…"/>
+            <div style={{ display:"flex", gap:"0.5rem", justifyContent:"flex-end" }}>
+              <Btn variant="ghost" onClick={()=>setModal(null)}>Annuler</Btn>
+              <Btn variant="orange" onClick={handleAddLocation}><CheckIcon/> Enregistrer</Btn>
+            </div>
+          </Modal>
+        )}
+
+        {/* EVENT */}
+        {modal==="addEvent"&&isAdmin&&(
+          <Modal title="Nouvel événement" onClose={()=>setModal(null)}>
+            <Inp label="Titre *" value={form.title||""} onChange={e=>setForm(p=>({...p,title:e.target.value}))} placeholder="Assemblée générale"/>
+            <Inp label="Date *" type="date" value={form.date||""} onChange={e=>setForm(p=>({...p,date:e.target.value}))}/>
+            <Inp label="Heure" type="time" value={form.time||"09:00"} onChange={e=>setForm(p=>({...p,time:e.target.value}))}/>
+            <Inp label="Lieu" value={form.location||""} onChange={e=>setForm(p=>({...p,location:e.target.value}))} placeholder="Salle communautaire"/>
+            <Inp label="Description" value={form.description||""} onChange={e=>setForm(p=>({...p,description:e.target.value}))} placeholder="Description..."/>
+            <Inp label="Max participants" type="number" value={form.maxParticipants||50} onChange={e=>setForm(p=>({...p,maxParticipants:e.target.value}))}/>
+            <div style={{ display:"flex", gap:"0.5rem", justifyContent:"flex-end" }}>
+              <Btn variant="ghost" onClick={()=>setModal(null)}>Annuler</Btn>
+              <Btn onClick={handleAddEvent}><PlusIcon/> Créer</Btn>
+            </div>
+          </Modal>
+        )}
+
+        {/* DÉTAIL MEMBRE */}
+        {modal==="memberDetail"&&isAdmin&&selMember&&(
+          <Modal title={selMember.name} onClose={()=>setModal(null)}>
+            <div style={{ marginBottom:"1rem" }}>
+              <p style={{ color:"#5A7090", fontSize:"0.75rem" }}>Adhérent depuis {new Date(selMember.joinDate).toLocaleDateString("fr-FR")}</p>
+              {selMember.phone&&<p style={{ color:"#7A90B0", fontSize:"0.82rem", marginTop:"0.2rem" }}>📞 {selMember.phone}</p>}
+              {selMember.email&&<p style={{ color:"#7A90B0", fontSize:"0.82rem" }}>✉️ {selMember.email}</p>}
+              <p style={{ color:selMember.password?"#4ADE80":"#FB923C", fontSize:"0.78rem", marginTop:"0.3rem" }}>{selMember.password?"🔐 Mot de passe défini":"⚠ Pas encore de mot de passe"}</p>
+            </div>
+            <div style={{ display:"flex", gap:"0.5rem", marginBottom:"0.75rem" }}>
+              <div style={{ flex:1, background:"#0A1930", borderRadius:"10px", padding:"0.6rem", textAlign:"center" }}>
+                <p style={{ color:"#60A5FA", fontSize:"0.62rem", fontWeight:600 }}>Total mensuel</p>
+                <p style={{ color:"#60A5FA", fontFamily:"Syne", fontWeight:800, fontSize:"0.92rem" }}>{fmt(payments.filter(p=>p.memberId===selMember.id&&p.type==="mensuelle").reduce((s,p)=>s+p.amount,0))}</p>
+              </div>
+              <div style={{ flex:1, background:"#1E0A3C", borderRadius:"10px", padding:"0.6rem", textAlign:"center" }}>
+                <p style={{ color:"#C084FC", fontSize:"0.62rem", fontWeight:600 }}>Total except.</p>
+                <p style={{ color:"#C084FC", fontFamily:"Syne", fontWeight:800, fontSize:"0.92rem" }}>{fmt(getTotalExcep(selMember.id,CURRENT_YEAR))}</p>
+              </div>
+            </div>
+            <p style={{ color:"#4A6080", fontSize:"0.7rem", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:"0.5rem" }}>Historique</p>
+            {payments.filter(p=>p.memberId===selMember.id).sort((a,b)=>b.year-a.year||(b.month||0)-(a.month||0)).map(p=>(
+              <div key={p.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"0.5rem 0", borderBottom:"1px solid #0F1C30" }}>
+                <div><TypeBadge type={p.type}/><span style={{ color:"#B0C4E0", fontSize:"0.76rem", marginLeft:"0.4rem" }}>{p.type==="mensuelle"?`${MOIS[p.month-1]} ${p.year}`:p.label} — {p.method}</span></div>
+                <span style={{ color:p.type==="exceptionnelle"?"#C084FC":"#4ADE80", fontSize:"0.82rem", fontWeight:700 }}>{fmt(p.amount)}</span>
+              </div>
+            ))}
+          </Modal>
+        )}
+      </div>
+    </>
+  );
+}
