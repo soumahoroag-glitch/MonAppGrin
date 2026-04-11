@@ -1,0 +1,1218 @@
+import { useState, useMemo } from "react";
+
+const CURRENT_YEAR  = new Date().getFullYear();
+const CURRENT_MONTH = new Date().getMonth() + 1;
+const MOIS = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
+const ADMIN_PASSWORD = "admin123";
+const START_YEAR = 2022; // Année la plus ancienne disponible
+const ALL_YEARS = Array.from({ length: CURRENT_YEAR - START_YEAR + 2 }, (_, i) => CURRENT_YEAR + 1 - i); // [2027,2026,...,2022]
+
+const DEFAULT_TARIFS = {};
+ALL_YEARS.forEach(y => { DEFAULT_TARIFS[y] = 1000; });
+DEFAULT_PRIX = { chaise: 100, bache: 2000 };
+
+const INITIAL_MEMBERS = [
+  { id:1, name:"Kouassi Aman",  phone:"07 12 34 56 78", joinDate:`${START_YEAR}-01-15`, password:null },
+  { id:2, name:"Fatou Diallo",  phone:"07 23 45 67 89", joinDate:`${START_YEAR}-01-20`, password:null },
+  { id:3, name:"Moussa Traoré", phone:"07 34 56 78 90", joinDate:`${START_YEAR}-02-10`, password:null },
+  { id:4, name:"Aminata Koné",  phone:"07 45 67 89 01", joinDate:`${START_YEAR}-03-05`, password:null },
+  { id:5, name:"Ibrahima Sow",  phone:"07 56 78 90 12", joinDate:`${START_YEAR}-01-08`, password:null },
+];
+
+const mk = (id, mId, yr, mo, amt, dt, meth, type, lbl) =>
+  ({ id, memberId:mId, year:yr, month:mo, amount:amt, date:dt, method:meth, type, label:lbl });
+
+const INITIAL_PAYMENTS = [
+  mk(1, 1, 2022, 1,  1000, "2022-01-20","Mobile Money","mensuelle",""),
+  mk(2, 1, 2022, 2,  1000, "2022-02-18","Mobile Money","mensuelle",""),
+  mk(3, 2, 2022, 1,  1000, "2022-01-25","Espèces","mensuelle",""),
+  mk(4, 1, 2023, 1,  1000, "2023-01-20","Mobile Money","mensuelle",""),
+  mk(5, 2, 2023, 1,  1000, "2023-01-22","Espèces","mensuelle",""),
+  mk(6, 3, 2023, 1,  1000, "2023-01-30","Virement","mensuelle",""),
+  mk(7, 1, CURRENT_YEAR, 1, 1000, `${CURRENT_YEAR}-01-20`,"Mobile Money","mensuelle",""),
+  mk(8, 1, CURRENT_YEAR, 2, 1000, `${CURRENT_YEAR}-02-18`,"Mobile Money","mensuelle",""),
+  mk(9, 2, CURRENT_YEAR, 1, 1000, `${CURRENT_YEAR}-01-25`,"Espèces","mensuelle",""),
+  mk(10,5, CURRENT_YEAR, 1, 1000, `${CURRENT_YEAR}-01-10`,"Mobile Money","mensuelle",""),
+  mk(11,1, CURRENT_YEAR, null,5000,`${CURRENT_YEAR}-02-05`,"Mobile Money","exceptionnelle","Fonds d'urgence"),
+  mk(12,3, CURRENT_YEAR, null,2500,`${CURRENT_YEAR}-03-01`,"Espèces","exceptionnelle","Fête annuelle"),
+];
+
+const INITIAL_LOCATIONS = [
+  { id:1, type:"chaise", quantite:50, prixUnit:100, montant:5000,  date:`${CURRENT_YEAR}-02-10`, client:"Famille Koné",   method:"Espèces",      notes:"Baptême" },
+  { id:2, type:"bache",  quantite:2,  prixUnit:2000,montant:4000,  date:`${CURRENT_YEAR}-03-05`, client:"ASCA Yopougon", method:"Mobile Money", notes:"Conférence" },
+  { id:3, type:"chaise", quantite:30, prixUnit:100, montant:3000,  date:"2023-06-15",             client:"Église centrale",method:"Espèces",      notes:"Culte" },
+];
+
+const INITIAL_EVENTS = [
+  { id:1, title:"Assemblée Générale",    date:`${CURRENT_YEAR}-04-20`, time:"18:00", location:"Salle des fêtes",       description:"AG annuelle",         maxParticipants:50,  participants:[1,2,3] },
+  { id:2, title:"Fête de l'association", date:`${CURRENT_YEAR}-06-15`, time:"10:00", location:"Terrain communautaire", description:"Célébration annuelle", maxParticipants:100, participants:[1,4,5] },
+  { id:3, title:"Réunion Bureau",        date:`${CURRENT_YEAR}-04-10`, time:"19:30", location:"Local association",     description:"Réunion mensuelle",    maxParticipants:10,  participants:[2,3] },
+];
+
+var DEFAULT_PRIX; // declared above via assignment
+
+const fmt  = (n) => new Intl.NumberFormat("fr-FR").format(n||0) + " FCFA";
+const fmtN = (n) => new Intl.NumberFormat("fr-FR").format(n||0);
+const today = () => new Date().toISOString().slice(0,10);
+
+// ── Icons ─────────────────────────────────────────────────────────────────────
+const Ico = ({ d, size=18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={d}/></svg>
+);
+const HomeIcon    = () => <Ico d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M9 22V12h6v10"/>;
+const UsersIcon   = () => <Ico d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2 M23 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75"/>;
+const CoinsIcon   = () => <Ico d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z M12 6v6l4 2"/>;
+const CalIcon     = () => <Ico d="M8 2v4 M16 2v4 M3 10h18 M21 8H3a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2z"/>;
+const ChairIcon   = () => <Ico d="M3 17h18 M5 17V7a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v10 M8 17v3 M16 17v3"/>;
+const ReportIcon  = () => <Ico d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M16 13H8 M16 17H8 M10 9H8"/>;
+const CheckIcon   = () => <Ico d="M20 6L9 17l-5-5"/>;
+const PlusIcon    = () => <Ico d="M12 5v14 M5 12h14"/>;
+const XIcon       = () => <Ico d="M18 6L6 18 M6 6l12 12"/>;
+const TrashIcon   = () => <Ico d="M3 6h18 M8 6V4h8v2 M19 6l-1 14H6L5 6"/>;
+const SearchIcon  = () => <Ico d="M21 21l-4.35-4.35 M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/>;
+const LockIcon    = () => <Ico d="M19 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2z M7 11V7a5 5 0 0 1 10 0v4"/>;
+const LogoutIcon  = () => <Ico d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4 M16 17l5-5-5-5 M21 12H9"/>;
+const EyeIcon     = () => <Ico d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/>;
+const EyeOffIcon  = () => <Ico d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24 M1 1l22 22"/>;
+const ShieldIcon  = () => <Ico d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>;
+const PersonIcon  = () => <Ico d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/>;
+const StarIcon    = () => <Ico d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>;
+const EditIcon    = () => <Ico d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7 M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>;
+const PrintIcon   = () => <Ico d="M6 9V2h12v7 M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2 M6 14h12v8H6z"/>;
+const KeyIcon     = () => <Ico d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>;
+
+// ── Couleurs thème CLAIR ───────────────────────────────────────────────────────
+const C = {
+  bg:       "#F0F4FF",   // fond principal
+  card:     "#FFFFFF",   // cartes
+  card2:    "#EEF2FF",   // cartes secondaires
+  border:   "#CBD5E1",   // bordures
+  border2:  "#E2E8F0",
+  nav:      "#1E293B",   // nav bas
+  navTxt:   "#94A3B8",
+  navAct:   "#3B82F6",
+  txt:      "#1E293B",   // texte principal
+  txt2:     "#475569",   // texte secondaire
+  txt3:     "#94A3B8",   // texte tertiaire
+  blue:     "#3B82F6",
+  blueDk:   "#1D4ED8",
+  green:    "#16A34A",
+  greenLt:  "#DCFCE7",
+  red:      "#DC2626",
+  redLt:    "#FEE2E2",
+  orange:   "#EA580C",
+  orangeLt: "#FFF7ED",
+  purple:   "#7C3AED",
+  purpleLt: "#EDE9FE",
+  yellow:   "#D97706",
+  yellowLt: "#FFFBEB",
+  pink:     "#DB2777",
+};
+
+// ── UI ────────────────────────────────────────────────────────────────────────
+const Modal = ({ title, onClose, children, wide=false }) => (
+  <div style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", zIndex:1000, display:"flex", alignItems:"flex-start", justifyContent:"center", padding:"1rem", overflowY:"auto" }}>
+    <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:"20px", width:"100%", maxWidth:wide?"680px":"480px", padding:"1.5rem", boxShadow:"0 20px 60px rgba(0,0,0,0.15)", marginTop:"1rem" }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"1.25rem" }}>
+        <h3 style={{ color:C.txt, fontSize:"1.05rem", fontWeight:700, margin:0 }}>{title}</h3>
+        <button onClick={onClose} style={{ background:C.card2, border:`1px solid ${C.border}`, borderRadius:"8px", padding:"5px", color:C.txt2, cursor:"pointer", display:"flex" }}><XIcon size={16}/></button>
+      </div>
+      {children}
+    </div>
+  </div>
+);
+
+const Inp = ({ label, ...p }) => (
+  <div style={{ marginBottom:"0.85rem" }}>
+    {label && <label style={{ display:"block", color:C.txt2, fontSize:"0.73rem", marginBottom:"0.3rem", fontWeight:600, textTransform:"uppercase", letterSpacing:"0.06em" }}>{label}</label>}
+    <input {...p} style={{ width:"100%", background:C.card2, border:`1px solid ${C.border}`, borderRadius:"8px", padding:"0.58rem 0.75rem", color:C.txt, fontSize:"0.88rem", outline:"none", boxSizing:"border-box", ...p.style }}/>
+  </div>
+);
+
+const Sel = ({ label, children, ...p }) => (
+  <div style={{ marginBottom:"0.85rem" }}>
+    {label && <label style={{ display:"block", color:C.txt2, fontSize:"0.73rem", marginBottom:"0.3rem", fontWeight:600, textTransform:"uppercase", letterSpacing:"0.06em" }}>{label}</label>}
+    <select {...p} style={{ width:"100%", background:C.card2, border:`1px solid ${C.border}`, borderRadius:"8px", padding:"0.58rem 0.75rem", color:C.txt, fontSize:"0.88rem", outline:"none", boxSizing:"border-box" }}>{children}</select>
+  </div>
+);
+
+const Btn = ({ children, onClick, variant="primary", small=false, style:s={} }) => {
+  const v = {
+    primary: { background:C.blue,   color:"#fff", border:"none" },
+    success: { background:C.green,  color:"#fff", border:"none" },
+    danger:  { background:C.red,    color:"#fff", border:"none" },
+    ghost:   { background:"transparent", color:C.txt2, border:`1px solid ${C.border}` },
+    orange:  { background:C.orange, color:"#fff", border:"none" },
+    purple:  { background:C.purple, color:"#fff", border:"none" },
+    teal:    { background:"#0D9488",color:"#fff", border:"none" },
+    yellow:  { background:C.yellow, color:"#fff", border:"none" },
+  };
+  return <button onClick={onClick} style={{ ...v[variant], borderRadius:"8px", padding:small?"0.28rem 0.65rem":"0.6rem 1.1rem", fontSize:small?"0.73rem":"0.86rem", fontWeight:600, cursor:"pointer", display:"inline-flex", alignItems:"center", gap:"0.35rem", ...s }}>{children}</button>;
+};
+
+const Badge = ({ color, bg, children }) => (
+  <span style={{ background:bg, color, borderRadius:"20px", padding:"2px 10px", fontSize:"0.7rem", fontWeight:700, display:"inline-flex", alignItems:"center", gap:"3px" }}>{children}</span>
+);
+
+const StatusBadge = ({ status }) => {
+  const m = { ok:[C.green,C.greenLt,"À jour"], partial:[C.orange,C.orangeLt,"Partiel"], late:[C.red,C.redLt,"En retard"] }[status];
+  return <Badge color={m[0]} bg={m[1]}>{m[2]}</Badge>;
+};
+const TypeBadge = ({ type }) => type==="exceptionnelle"
+  ? <Badge color={C.purple} bg={C.purpleLt}><StarIcon size={10}/> Except.</Badge>
+  : <Badge color={C.blue} bg="#EFF6FF">Mensuelle</Badge>;
+
+// ── PWD INPUT ─────────────────────────────────────────────────────────────────
+const PwdInput = ({ label, value, onChange }) => {
+  const [show, setShow] = useState(false);
+  return (
+    <div style={{ marginBottom:"0.85rem" }}>
+      {label&&<label style={{ display:"block", color:C.txt2, fontSize:"0.73rem", marginBottom:"0.3rem", fontWeight:600, textTransform:"uppercase", letterSpacing:"0.06em" }}>{label}</label>}
+      <div style={{ position:"relative" }}>
+        <input type={show?"text":"password"} value={value} onChange={onChange} placeholder="••••••••"
+          style={{ width:"100%", background:C.card2, border:`1px solid ${C.border}`, borderRadius:"8px", padding:"0.58rem 2.5rem 0.58rem 0.75rem", color:C.txt, fontSize:"0.88rem", outline:"none", boxSizing:"border-box" }}/>
+        <button type="button" onClick={()=>setShow(x=>!x)} style={{ position:"absolute", right:"0.6rem", top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:C.txt3, cursor:"pointer" }}>{show?<EyeOffIcon/>:<EyeIcon/>}</button>
+      </div>
+    </div>
+  );
+};
+
+// ── FIRST LOGIN ───────────────────────────────────────────────────────────────
+function FirstLoginScreen({ member, onSet }) {
+  const [pwd, setPwd]   = useState("");
+  const [pwd2, setPwd2] = useState("");
+  const [err, setErr]   = useState("");
+  const submit = () => {
+    if (pwd.length < 4) return setErr("Minimum 4 caractères");
+    if (pwd !== pwd2)   return setErr("Les mots de passe ne correspondent pas");
+    onSet(pwd);
+  };
+  return (
+    <div style={{ minHeight:"100vh", background:C.bg, maxWidth:"430px", margin:"0 auto", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"2rem 1.5rem" }}>
+      <div style={{ width:"60px", height:"60px", borderRadius:"18px", background:C.blue, display:"flex", alignItems:"center", justifyContent:"center", marginBottom:"1.5rem", boxShadow:"0 8px 24px #3B82F640" }}><KeyIcon size={28}/></div>
+      <h1 style={{ fontFamily:"Syne", fontSize:"1.4rem", fontWeight:800, color:C.txt, textAlign:"center", marginBottom:"0.4rem" }}>Bienvenue, {member.name.split(" ")[0]} !</h1>
+      <p style={{ color:C.txt2, fontSize:"0.85rem", textAlign:"center", marginBottom:"2rem" }}>Première connexion — choisissez votre mot de passe personnel</p>
+      <div style={{ width:"100%", background:C.card, border:`1px solid ${C.border}`, borderRadius:"16px", padding:"1.5rem", boxShadow:"0 4px 20px rgba(0,0,0,0.06)" }}>
+        <PwdInput label="Nouveau mot de passe (min. 4 caractères)" value={pwd} onChange={e=>{setPwd(e.target.value);setErr("");}}/>
+        <PwdInput label="Confirmer le mot de passe" value={pwd2} onChange={e=>{setPwd2(e.target.value);setErr("");}}/>
+        {err&&<p style={{ color:C.red, fontSize:"0.78rem", marginBottom:"0.75rem" }}>⚠ {err}</p>}
+        <Btn onClick={submit} style={{ width:"100%", justifyContent:"center" }}><CheckIcon/> Définir mon mot de passe</Btn>
+      </div>
+      <p style={{ color:C.txt3, fontSize:"0.7rem", marginTop:"1.5rem" }}>Mahoro Concept</p>
+    </div>
+  );
+}
+
+// ── LOGIN ─────────────────────────────────────────────────────────────────────
+function LoginScreen({ members, onLogin }) {
+  const [mode, setMode]      = useState("choice");
+  const [pwd, setPwd]        = useState("");
+  const [selId, setSelId]    = useState("");
+  const [memberPwd, setMPwd] = useState("");
+  const [err, setErr]        = useState("");
+
+  const tryAdmin = () => pwd===ADMIN_PASSWORD ? onLogin({role:"admin"}) : setErr("Mot de passe incorrect");
+  const tryMember = () => {
+    const m = members.find(m=>m.id===parseInt(selId));
+    if (!m) return setErr("Veuillez sélectionner votre nom");
+    if (!m.password) return onLogin({role:"firstLogin", memberId:m.id});
+    if (memberPwd !== m.password) return setErr("Mot de passe incorrect");
+    onLogin({role:"member", memberId:m.id, memberName:m.name});
+  };
+
+  return (
+    <div style={{ minHeight:"100vh", background:C.bg, maxWidth:"430px", margin:"0 auto", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"2rem 1.5rem" }}>
+      {/* Logo */}
+      <div style={{ width:"70px", height:"70px", borderRadius:"22px", background:`linear-gradient(135deg,${C.blue},${C.purple})`, display:"flex", alignItems:"center", justifyContent:"center", marginBottom:"1rem", boxShadow:"0 12px 32px #3B82F640" }}><ShieldIcon size={34}/></div>
+      <h1 style={{ fontFamily:"Syne", fontSize:"1.7rem", fontWeight:800, color:C.txt, marginBottom:"0.2rem", textAlign:"center" }}>Mon Association</h1>
+      <p style={{ color:C.blue, fontSize:"0.78rem", fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:"0.3rem" }}>Mahoro Concept</p>
+      <p style={{ color:C.txt2, fontSize:"0.82rem", marginBottom:"2.5rem", textAlign:"center" }}>Connectez-vous pour accéder à l'application</p>
+
+      {mode==="choice"&&(
+        <div style={{ width:"100%", display:"flex", flexDirection:"column", gap:"0.75rem" }}>
+          <button onClick={()=>{setMode("admin");setErr("");}} style={{ background:C.yellowLt, border:`1px solid ${C.yellow}40`, borderRadius:"14px", padding:"1.1rem 1.25rem", display:"flex", alignItems:"center", gap:"1rem", cursor:"pointer", textAlign:"left", boxShadow:"0 2px 8px rgba(0,0,0,0.05)" }}>
+            <div style={{ width:"44px", height:"44px", borderRadius:"12px", background:C.yellow, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, color:"#fff" }}><ShieldIcon size={22}/></div>
+            <div><p style={{ color:C.yellow, fontWeight:700, fontSize:"0.95rem" }}>Administrateur</p><p style={{ color:C.txt2, fontSize:"0.75rem" }}>Accès complet — gestion totale</p></div>
+          </button>
+          <button onClick={()=>{setMode("member");setErr("");}} style={{ background:"#EFF6FF", border:`1px solid ${C.blue}40`, borderRadius:"14px", padding:"1.1rem 1.25rem", display:"flex", alignItems:"center", gap:"1rem", cursor:"pointer", textAlign:"left", boxShadow:"0 2px 8px rgba(0,0,0,0.05)" }}>
+            <div style={{ width:"44px", height:"44px", borderRadius:"12px", background:C.blue, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, color:"#fff" }}><PersonIcon size={22}/></div>
+            <div><p style={{ color:C.blue, fontWeight:700, fontSize:"0.95rem" }}>Membre</p><p style={{ color:C.txt2, fontSize:"0.75rem" }}>Lecture seule — voir votre statut</p></div>
+          </button>
+        </div>
+      )}
+
+      {mode==="admin"&&(
+        <div style={{ width:"100%", background:C.card, border:`1px solid ${C.border}`, borderRadius:"16px", padding:"1.5rem", boxShadow:"0 4px 20px rgba(0,0,0,0.06)" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:"0.5rem", marginBottom:"1.25rem" }}><span style={{ color:C.yellow }}><ShieldIcon size={16}/></span><p style={{ color:C.yellow, fontWeight:700, fontSize:"0.9rem" }}>Connexion Administrateur</p></div>
+          <PwdInput label="Mot de passe" value={pwd} onChange={e=>{setPwd(e.target.value);setErr("");}}/>
+          {err&&<p style={{ color:C.red, fontSize:"0.78rem", marginBottom:"0.75rem" }}>⚠ {err}</p>}
+          <div style={{ display:"flex", gap:"0.5rem" }}>
+            <Btn variant="ghost" onClick={()=>{setMode("choice");setPwd("");setErr("");}}>Retour</Btn>
+            <Btn variant="yellow" onClick={tryAdmin} style={{ flex:1, justifyContent:"center" }}><LockIcon/> Connexion</Btn>
+          </div>
+        </div>
+      )}
+
+      {mode==="member"&&(
+        <div style={{ width:"100%", background:C.card, border:`1px solid ${C.border}`, borderRadius:"16px", padding:"1.5rem", boxShadow:"0 4px 20px rgba(0,0,0,0.06)" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:"0.5rem", marginBottom:"1.25rem" }}><span style={{ color:C.blue }}><PersonIcon size={16}/></span><p style={{ color:C.blue, fontWeight:700, fontSize:"0.9rem" }}>Connexion Membre</p></div>
+          <Sel label="Sélectionnez votre nom" value={selId} onChange={e=>{setSelId(e.target.value);setMPwd("");setErr("");}}>
+            <option value="">— Choisir —</option>
+            {members.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+          </Sel>
+          {selId&&members.find(m=>m.id===parseInt(selId))?.password&&(
+            <PwdInput label="Mot de passe" value={memberPwd} onChange={e=>{setMPwd(e.target.value);setErr("");}}/>
+          )}
+          {selId&&!members.find(m=>m.id===parseInt(selId))?.password&&(
+            <div style={{ background:"#EFF6FF", border:`1px solid ${C.blue}30`, borderRadius:"8px", padding:"0.6rem 0.75rem", marginBottom:"0.85rem" }}>
+              <p style={{ color:C.blue, fontSize:"0.78rem" }}>👋 Première connexion — vous choisirez votre mot de passe à l'étape suivante.</p>
+            </div>
+          )}
+          {err&&<p style={{ color:C.red, fontSize:"0.78rem", marginBottom:"0.75rem" }}>⚠ {err}</p>}
+          <div style={{ display:"flex", gap:"0.5rem" }}>
+            <Btn variant="ghost" onClick={()=>{setMode("choice");setSelId("");setMPwd("");setErr("");}}>Retour</Btn>
+            <Btn onClick={tryMember} style={{ flex:1, justifyContent:"center" }}><CheckIcon/> Accéder</Btn>
+          </div>
+        </div>
+      )}
+      <p style={{ color:C.txt3, fontSize:"0.7rem", marginTop:"2rem" }}>Mahoro Concept © {CURRENT_YEAR}</p>
+    </div>
+  );
+}
+
+// ── BILAN ─────────────────────────────────────────────────────────────────────
+function BilanContent({ dateFrom, dateTo, payments, locations, members }) {
+  const inRange = d => d >= dateFrom && d <= dateTo;
+  const payIn = payments.filter(p=>inRange(p.date));
+  const locIn = locations.filter(l=>inRange(l.date));
+  const totMens  = payIn.filter(p=>p.type==="mensuelle").reduce((s,p)=>s+p.amount,0);
+  const totExcep = payIn.filter(p=>p.type==="exceptionnelle").reduce((s,p)=>s+p.amount,0);
+  const totChaise= locIn.filter(l=>l.type==="chaise").reduce((s,l)=>s+l.montant,0);
+  const totBache = locIn.filter(l=>l.type==="bache").reduce((s,l)=>s+l.montant,0);
+  const totLoc   = totChaise+totBache;
+  const totGen   = totMens+totExcep+totLoc;
+
+  const TH = ({children,right}) => <th style={{ padding:"7px 10px", fontSize:"0.75rem", color:C.txt2, fontWeight:700, textAlign:right?"right":"left", borderBottom:`2px solid ${C.border}`, background:C.card2 }}>{children}</th>;
+  const TD = ({children,bold,right,color}) => <td style={{ padding:"7px 10px", fontSize:"0.78rem", color:color||C.txt, fontWeight:bold?700:400, textAlign:right?"right":"left", borderBottom:`1px solid ${C.border2}` }}>{children}</td>;
+
+  return (
+    <div id="bilan-content" style={{ fontFamily:"'DM Sans',sans-serif", color:C.txt }}>
+      <div style={{ textAlign:"center", marginBottom:"1.5rem", paddingBottom:"1rem", borderBottom:`2px solid ${C.border}` }}>
+        <h2 style={{ fontFamily:"Syne,sans-serif", fontSize:"1.4rem", fontWeight:800, color:C.txt, marginBottom:"0.2rem" }}>Mon Association</h2>
+        <p style={{ color:C.blue, fontSize:"0.75rem", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em" }}>Mahoro Concept</p>
+        <p style={{ color:C.purple, fontSize:"1rem", fontWeight:700, margin:"0.5rem 0 0.2rem" }}>BILAN FINANCIER</p>
+        <p style={{ color:C.txt2, fontSize:"0.8rem" }}>Période : {new Date(dateFrom).toLocaleDateString("fr-FR")} → {new Date(dateTo).toLocaleDateString("fr-FR")}</p>
+        <p style={{ color:C.txt3, fontSize:"0.72rem" }}>Généré le {new Date().toLocaleDateString("fr-FR")} à {new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</p>
+      </div>
+
+      {/* Résumé */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"0.6rem", marginBottom:"1.5rem" }}>
+        {[
+          {label:"Cotisations", value:fmt(totMens+totExcep), color:C.blue,   bg:"#EFF6FF"},
+          {label:"Locations",   value:fmt(totLoc),           color:C.orange, bg:C.orangeLt},
+          {label:"TOTAL",       value:fmt(totGen),            color:C.green,  bg:C.greenLt},
+        ].map(s=>(
+          <div key={s.label} style={{ background:s.bg, borderRadius:"10px", padding:"0.7rem", textAlign:"center", border:`1px solid ${s.color}30` }}>
+            <p style={{ color:C.txt2, fontSize:"0.62rem", fontWeight:600, textTransform:"uppercase" }}>{s.label}</p>
+            <p style={{ color:s.color, fontFamily:"Syne,sans-serif", fontSize:"0.82rem", fontWeight:800, marginTop:"0.2rem" }}>{s.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Cotisations */}
+      <p style={{ color:C.blue, fontSize:"0.75rem", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:"0.5rem" }}>Cotisations</p>
+      <table style={{ width:"100%", borderCollapse:"collapse", marginBottom:"1.25rem" }}>
+        <thead><tr><TH>Membre</TH><TH>Type</TH><TH>Détail</TH><TH right>Montant</TH></tr></thead>
+        <tbody>
+          {payIn.length===0&&<tr><TD colSpan={4} style={{ textAlign:"center", color:C.txt3 }}>Aucun paiement sur cette période</TD></tr>}
+          {payIn.map(p=>{ const m=members.find(x=>x.id===p.memberId); return (
+            <tr key={p.id}>
+              <TD>{m?.name||"—"}</TD>
+              <TD>{p.type==="mensuelle"?"Mensuelle":"Exceptionnel"}</TD>
+              <TD>{p.type==="mensuelle"?`${MOIS[p.month-1]} ${p.year}`:p.label}</TD>
+              <TD right bold color={C.green}>+{fmt(p.amount)}</TD>
+            </tr>
+          );})}
+          <tr style={{ background:C.card2 }}>
+            <td colSpan={3} style={{ padding:"7px 10px", fontSize:"0.8rem", fontWeight:700, color:C.txt }}>Sous-total cotisations</td>
+            <td style={{ padding:"7px 10px", fontSize:"0.8rem", fontWeight:700, color:C.blue, textAlign:"right" }}>{fmt(totMens+totExcep)}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      {/* Locations */}
+      <p style={{ color:C.orange, fontSize:"0.75rem", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:"0.5rem" }}>Revenus de location</p>
+      <table style={{ width:"100%", borderCollapse:"collapse", marginBottom:"1.25rem" }}>
+        <thead><tr><TH>Date</TH><TH>Type</TH><TH>Client</TH><TH right>Qté</TH><TH right>P.U.</TH><TH right>Montant</TH></tr></thead>
+        <tbody>
+          {locIn.length===0&&<tr><td colSpan={6} style={{ padding:"7px 10px", textAlign:"center", color:C.txt3, fontSize:"0.78rem" }}>Aucune location</td></tr>}
+          {locIn.map(l=>(
+            <tr key={l.id}>
+              <TD>{new Date(l.date).toLocaleDateString("fr-FR")}</TD>
+              <TD>{l.type==="chaise"?"🪑 Chaises":"🏕 Bâche"}</TD>
+              <TD>{l.client||"—"}</TD>
+              <TD right>{fmtN(l.quantite)}</TD>
+              <TD right>{fmt(l.prixUnit)}</TD>
+              <TD right bold color={C.orange}>+{fmt(l.montant)}</TD>
+            </tr>
+          ))}
+          <tr style={{ background:C.card2 }}>
+            <td colSpan={5} style={{ padding:"7px 10px", fontSize:"0.8rem", fontWeight:700, color:C.txt }}>Sous-total locations</td>
+            <td style={{ padding:"7px 10px", fontSize:"0.8rem", fontWeight:700, color:C.orange, textAlign:"right" }}>{fmt(totLoc)}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      {/* Total */}
+      <div style={{ background:C.greenLt, border:`2px solid ${C.green}40`, borderRadius:"12px", padding:"1rem", textAlign:"center" }}>
+        <p style={{ color:C.txt2, fontSize:"0.75rem", fontWeight:600, textTransform:"uppercase" }}>TOTAL GÉNÉRAL DES RECETTES</p>
+        <p style={{ color:C.green, fontFamily:"Syne,sans-serif", fontSize:"1.7rem", fontWeight:800 }}>{fmt(totGen)}</p>
+        <div style={{ display:"flex", justifyContent:"center", gap:"1.5rem", marginTop:"0.4rem" }}>
+          <span style={{ color:C.blue, fontSize:"0.72rem" }}>Cotis. : {fmt(totMens+totExcep)}</span>
+          <span style={{ color:C.orange, fontSize:"0.72rem" }}>Locations : {fmt(totLoc)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── MAIN ──────────────────────────────────────────────────────────────────────
+export default function App() {
+  const [session, setSession]     = useState(null);
+  const [members, setMembers]     = useState(INITIAL_MEMBERS);
+  const [payments, setPayments]   = useState(INITIAL_PAYMENTS);
+  const [locations, setLocations] = useState(INITIAL_LOCATIONS);
+  const [events, setEvents]       = useState(INITIAL_EVENTS);
+  const [tarifs, setTarifs]       = useState(DEFAULT_TARIFS);
+  const [prix, setPrix]           = useState(DEFAULT_PRIX);
+  const [tab, setTab]             = useState("dashboard");
+  const [modal, setModal]         = useState(null);
+  const [search, setSearch]       = useState("");
+  const [filterYear, setFilterYear] = useState(CURRENT_YEAR);
+  const [filterType, setFilterType] = useState("all");
+  const [selMember, setSelMember] = useState(null);
+  const [form, setForm]           = useState({});
+  const [bilan, setBilan]         = useState({ from:`${CURRENT_YEAR}-01-01`, to:today() });
+
+  const isAdmin  = session?.role==="admin";
+  const isMember = session?.role==="member";
+  const myId     = session?.memberId;
+
+  // ── helpers ────────────────────────────────────────────────────────────────
+  const getTarif = (year) => {
+    if (tarifs[year]) return tarifs[year];
+    const yrs = Object.keys(tarifs).map(Number).filter(y=>y<=year).sort((a,b)=>b-a);
+    return yrs.length>0?tarifs[yrs[0]]:1000;
+  };
+  const hasPaidMonth = (mId,year,month) => payments.some(p=>p.memberId===mId&&p.year===year&&p.month===month&&p.type==="mensuelle");
+  const getMonthsDue = (member,year) => {
+    const jd=new Date(member.joinDate),jy=jd.getFullYear(),jm=jd.getMonth()+1;
+    const start=year===jy?jm:(year<jy?99:1);
+    const end=year===CURRENT_YEAR?CURRENT_MONTH:(year<CURRENT_YEAR?12:0);
+    return start>end?0:end-start+1;
+  };
+  const getPaidMonths = (mId,year) => payments.filter(p=>p.memberId===mId&&p.year===year&&p.type==="mensuelle").length;
+  const getMemberStatus = (member,year) => {
+    const due=getMonthsDue(member,year); if(due===0) return "ok";
+    const paid=getPaidMonths(member.id,year);
+    return paid>=due?"ok":paid>0?"partial":"late";
+  };
+  const getTotalExcep = (mId,year) => payments.filter(p=>p.memberId===mId&&p.year===year&&p.type==="exceptionnelle").reduce((s,p)=>s+p.amount,0);
+
+  const stats = useMemo(()=>{
+    const totalMembers = members.length;
+    const upToDate     = members.filter(m=>getMemberStatus(m,CURRENT_YEAR)==="ok").length;
+    const collMensuel  = payments.filter(p=>p.year===CURRENT_YEAR&&p.type==="mensuelle").reduce((s,p)=>s+p.amount,0);
+    const collExcep    = payments.filter(p=>p.year===CURRENT_YEAR&&p.type==="exceptionnelle").reduce((s,p)=>s+p.amount,0);
+    const totalExpected= members.reduce((s,m)=>s+getMonthsDue(m,CURRENT_YEAR)*getTarif(CURRENT_YEAR),0);
+    const totalLocYear = locations.filter(l=>l.date.startsWith(String(CURRENT_YEAR))).reduce((s,l)=>s+l.montant,0);
+    return { totalMembers, upToDate, collMensuel, collExcep, totalExpected, totalLocYear, totalRecettes:collMensuel+collExcep+totalLocYear };
+  },[members,payments,locations,tarifs]);
+
+  // ── actions ────────────────────────────────────────────────────────────────
+  const handleSetPassword = (pwd) => {
+    const mId = session.pendingMemberId;
+    setMembers(prev => prev.map(m => m.id===mId ? {...m, password:pwd} : m));
+    const m = members.find(m=>m.id===mId);
+    setSession({ role:"member", memberId:mId, memberName:m?.name||"" });
+  };
+
+  const handleAddMember = () => {
+    if(!form.name) return;
+    const newId = Date.now();
+    setMembers(prev=>[...prev, {id:newId, name:form.name, phone:form.phone||"", joinDate:form.joinDate||today(), password:null}]);
+    setModal(null); setForm({});
+  };
+
+  const handleAddPayment = () => {
+    const isMens = form.payType!=="exceptionnelle";
+    if(!form.memberId) return;
+    if(isMens && !form.month) return;
+    if(!isMens && !form.label) return;
+    const year = parseInt(form.year||CURRENT_YEAR);
+    const newId = Date.now();
+    setPayments(prev=>[...prev, {
+      id:newId, memberId:parseInt(form.memberId), year,
+      month:isMens?parseInt(form.month):null,
+      amount:parseFloat(form.amount||(isMens?getTarif(year):0)),
+      date:form.date||today(),
+      method:form.method||"Espèces",
+      type:isMens?"mensuelle":"exceptionnelle",
+      label:isMens?"":form.label,
+    }]);
+    setModal(null); setForm({});
+  };
+
+  const handleAddLocation = () => {
+    if(!form.locType||!form.quantite) return;
+    const prixUnit = parseFloat(form.prixUnit||(form.locType==="chaise"?prix.chaise:prix.bache));
+    const qte = parseFloat(form.quantite);
+    const newId = Date.now();
+    setLocations(prev=>[...prev, {id:newId, type:form.locType, quantite:qte, prixUnit, montant:qte*prixUnit, date:form.date||today(), client:form.client||"", method:form.method||"Espèces", notes:form.notes||""}]);
+    setModal(null); setForm({});
+  };
+
+  const handleAddEvent = () => {
+    if(!form.title||!form.date) return;
+    const newId = Date.now();
+    setEvents(prev=>[...prev, {id:newId, title:form.title, date:form.date, time:form.time||"09:00", location:form.location||"", description:form.description||"", maxParticipants:parseInt(form.maxParticipants||50), participants:[]}]);
+    setModal(null); setForm({});
+  };
+
+  const handleSaveTarif = () => {
+    const year = parseInt(form.tarifYear||CURRENT_YEAR);
+    const montant = parseFloat(form.tarifMontant);
+    if(!montant||montant<=0) return;
+    setTarifs(prev=>({...prev,[year]:montant}));
+    setModal(null); setForm({});
+  };
+
+  const quickPayMonth = (mId,month) => {
+    if(hasPaidMonth(mId,CURRENT_YEAR,month)) return;
+    const newId = Date.now();
+    setPayments(prev=>[...prev, {id:newId, memberId:mId, year:CURRENT_YEAR, month, amount:getTarif(CURRENT_YEAR), date:today(), method:"Espèces", type:"mensuelle", label:""}]);
+  };
+
+  const toggleParticipant = (eId,mId) => {
+    setEvents(prev=>prev.map(e=>e.id!==eId?e:{...e, participants:e.participants.includes(mId)?e.participants.filter(x=>x!==mId):[...e.participants,mId]}));
+  };
+
+  // ── DELETE — corrigés ──────────────────────────────────────────────────────
+  const deleteMember = (id) => {
+    if (!window.confirm("Supprimer ce membre et tous ses paiements ?")) return;
+    setMembers(prev => prev.filter(m => m.id !== id));
+    setPayments(prev => prev.filter(p => p.memberId !== id));
+  };
+
+  const deletePayment = (id) => {
+    if (!window.confirm("Supprimer ce paiement ?")) return;
+    setPayments(prev => prev.filter(p => p.id !== id));
+  };
+
+  const deleteLocation = (id) => {
+    if (!window.confirm("Supprimer cette location ?")) return;
+    setLocations(prev => prev.filter(l => l.id !== id));
+  };
+
+  const deleteEvent = (id) => {
+    if (!window.confirm("Supprimer cet événement ?")) return;
+    setEvents(prev => prev.filter(e => e.id !== id));
+  };
+
+  const resetMemberPwd = (id) => {
+    if (!window.confirm("Réinitialiser le mot de passe de ce membre ?")) return;
+    setMembers(prev => prev.map(m => m.id===id ? {...m, password:null} : m));
+  };
+
+  // Impression bilan
+  const printBilan = () => {
+    const content = document.getElementById("bilan-content");
+    if(!content) return;
+    const w = window.open("","_blank");
+    w.document.write(`<html><head><title>Bilan Financier — Mahoro Concept</title>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap');
+      body{background:#fff;color:#1E293B;font-family:'DM Sans',sans-serif;padding:2rem;max-width:800px;margin:0 auto}
+      table{width:100%;border-collapse:collapse}
+      th,td{padding:7px 10px;font-size:0.82rem}
+      .no-print{display:none}
+      @media print{.no-print{display:none!important}}
+    </style></head><body>
+    ${content.innerHTML}
+    <div class="no-print" style="margin-top:1.5rem;text-align:center">
+      <button onclick="window.print()" style="background:#3B82F6;color:white;border:none;padding:0.75rem 2rem;border-radius:8px;font-size:1rem;cursor:pointer">🖨 Imprimer / Sauvegarder PDF</button>
+    </div>
+    </body></html>`);
+    w.document.close();
+  };
+
+  const filteredMembers = isMember
+    ? members.filter(m=>m.id===myId)
+    : members.filter(m=>m.name.toLowerCase().includes(search.toLowerCase()));
+
+  const NAV = [
+    {id:"dashboard",  label:"Accueil",     icon:<HomeIcon/>},
+    {id:"members",    label:"Membres",     icon:<UsersIcon/>},
+    {id:"cotisations",label:"Cotisations", icon:<CoinsIcon/>},
+    {id:"locations",  label:"Locations",   icon:<ChairIcon/>},
+    {id:"events",     label:"Événements",  icon:<CalIcon/>},
+  ];
+
+  const css = `
+    @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap');
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{background:${C.bg};font-family:'DM Sans',sans-serif;color:${C.txt}}
+    input:focus,select:focus{border-color:${C.blue}!important;box-shadow:0 0 0 3px ${C.blue}20}
+    input::placeholder{color:${C.txt3}}
+    ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:${C.card2}}::-webkit-scrollbar-thumb{background:${C.border};border-radius:4px}
+  `;
+
+  // ── Login / FirstLogin gate ────────────────────────────────────────────────
+  if (!session) return <LoginScreen members={members} onLogin={(s)=>{
+    if(s.role==="firstLogin") setSession({role:"firstLogin", pendingMemberId:s.memberId});
+    else setSession(s);
+  }}/>;
+  if (session.role==="firstLogin") {
+    const m = members.find(m=>m.id===session.pendingMemberId);
+    return <FirstLoginScreen member={m} onSet={handleSetPassword}/>;
+  }
+
+  // ── MonthGrid ─────────────────────────────────────────────────────────────
+  const MonthGrid = ({ member, year, clickable }) => {
+    const tarif=getTarif(year), due=getMonthsDue(member,year), paid=getPaidMonths(member.id,year), retard=Math.max(0,due-paid);
+    return (
+      <div style={{ background:C.card2, borderRadius:"8px", padding:"0.6rem", border:`1px solid ${C.border2}` }}>
+        <div style={{ display:"flex", justifyContent:"space-between", marginBottom:"0.4rem" }}>
+          <span style={{ color:C.txt2, fontSize:"0.68rem" }}>Mensuel {year} — <strong style={{ color:C.yellow }}>{fmt(tarif)}/mois</strong></span>
+          <span style={{ color:paid>=due?C.green:C.orange, fontSize:"0.68rem", fontWeight:700 }}>{paid}/{due} mois</span>
+        </div>
+        <div style={{ display:"flex", gap:"2px" }}>
+          {MOIS.map((mo,i)=>{
+            const month=i+1, jd=new Date(member.joinDate), jy=jd.getFullYear(), jm=jd.getMonth()+1;
+            const na=(year===jy&&month<jm)||(year===CURRENT_YEAR&&month>CURRENT_MONTH)||(year>CURRENT_YEAR);
+            const p=hasPaidMonth(member.id,year,month);
+            return (
+              <div key={month} title={na?"":p?`${mo} ✓`:`Cliquer → marquer ${mo} payé`}
+                onClick={()=>clickable&&!na&&!p&&quickPayMonth(member.id,month)}
+                style={{ flex:1, height:"26px", borderRadius:"4px",
+                  background:na?C.border2:p?C.greenLt:C.redLt,
+                  display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
+                  cursor:clickable&&!na&&!p?"pointer":"default",
+                  border:month===CURRENT_MONTH&&year===CURRENT_YEAR?`2px solid ${C.blue}`:`1px solid ${na?C.border:p?C.green+"40":C.red+"40"}` }}>
+                <span style={{ color:na?C.txt3:p?C.green:C.red, fontSize:"0.52rem", fontWeight:700 }}>{mo.slice(0,1)}</span>
+                {p&&<span style={{ color:C.green, fontSize:"0.48rem" }}>✓</span>}
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ display:"flex", justifyContent:"space-between", marginTop:"0.4rem" }}>
+          <span style={{ color:C.green, fontSize:"0.65rem", fontWeight:600 }}>{fmt(paid*tarif)} payé</span>
+          {retard>0&&<span style={{ color:C.red, fontSize:"0.65rem", fontWeight:600 }}>{fmt(retard*tarif)} dû</span>}
+        </div>
+      </div>
+    );
+  };
+
+  // ── Header ────────────────────────────────────────────────────────────────
+  const tabTitle = { dashboard:"Tableau de bord", members:isMember?"Mon profil":"Membres", cotisations:"Cotisations", locations:"Locations", events:"Événements" };
+
+  return (
+    <>
+      <style>{css}</style>
+      <div style={{ minHeight:"100vh", background:C.bg, maxWidth:"430px", margin:"0 auto", paddingBottom:"80px" }}>
+
+        {/* Header */}
+        <div style={{ background:C.card, borderBottom:`1px solid ${C.border}`, padding:"1rem 1.2rem 0.8rem", position:"sticky", top:0, zIndex:10, boxShadow:"0 2px 12px rgba(0,0,0,0.06)" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+            <div>
+              <div style={{ display:"flex", alignItems:"center", gap:"0.4rem", marginBottom:"0.1rem" }}>
+                {isAdmin
+                  ? <span style={{ background:C.yellowLt, color:C.yellow, fontSize:"0.62rem", fontWeight:700, padding:"1px 8px", borderRadius:"20px", border:`1px solid ${C.yellow}40` }}>⚙ Admin</span>
+                  : <span style={{ background:"#EFF6FF", color:C.blue, fontSize:"0.62rem", fontWeight:700, padding:"1px 8px", borderRadius:"20px", border:`1px solid ${C.blue}40` }}>👁 Lecture seule</span>
+                }
+              </div>
+              <h1 style={{ fontFamily:"Syne", fontSize:"1.25rem", fontWeight:800, color:C.txt, lineHeight:1.2 }}>{tabTitle[tab]}</h1>
+              {isMember&&<p style={{ color:C.txt2, fontSize:"0.7rem" }}>Bonjour, <strong style={{ color:C.blue }}>{session.memberName}</strong></p>}
+            </div>
+            <div style={{ display:"flex", alignItems:"center", gap:"0.4rem" }}>
+              {isAdmin&&tab==="dashboard"&&<Btn small variant="teal" onClick={()=>setModal("bilan")}><ReportIcon size={14}/> Bilan</Btn>}
+              {isAdmin&&["members","cotisations","locations"].includes(tab)&&(
+                <Btn small onClick={()=>{ setModal(tab==="members"?"addMember":tab==="cotisations"?"addCotisation":"addLocation"); setForm({payType:"mensuelle",locType:"chaise",prixUnit:prix.chaise}); }}>
+                  <PlusIcon/> Ajouter
+                </Btn>
+              )}
+              {isAdmin&&tab==="events"&&<Btn small onClick={()=>{setModal("addEvent");setForm({});}}><PlusIcon/> Ajouter</Btn>}
+              <button onClick={()=>{setSession(null);setTab("dashboard");}} style={{ background:C.card2, border:`1px solid ${C.border}`, borderRadius:"8px", padding:"0.38rem", color:C.txt2, cursor:"pointer", display:"flex" }}><LogoutIcon size={16}/></button>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ padding:"0.75rem 1.1rem" }}>
+
+          {/* ── DASHBOARD ──────────────────────────────────────────────────── */}
+          {tab==="dashboard"&&isAdmin&&(
+            <div>
+              {/* Tarif */}
+              <div style={{ background:C.yellowLt, border:`1px solid ${C.yellow}40`, borderRadius:"14px", padding:"0.85rem 1rem", marginBottom:"0.75rem", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                <div>
+                  <p style={{ color:C.txt2, fontSize:"0.68rem", fontWeight:600, textTransform:"uppercase" }}>Cotisation mensuelle {CURRENT_YEAR}</p>
+                  <p style={{ color:C.yellow, fontFamily:"Syne", fontSize:"1.25rem", fontWeight:800 }}>{fmt(getTarif(CURRENT_YEAR))}<span style={{ color:C.txt3, fontSize:"0.72rem" }}>/mois</span></p>
+                </div>
+                <button onClick={()=>{setModal("editTarif");setForm({tarifYear:CURRENT_YEAR,tarifMontant:getTarif(CURRENT_YEAR)});}} style={{ background:C.card, border:`1px solid ${C.yellow}40`, borderRadius:"8px", padding:"0.38rem 0.7rem", color:C.yellow, fontSize:"0.73rem", fontWeight:600, cursor:"pointer", display:"flex", alignItems:"center", gap:"0.3rem" }}><EditIcon size={13}/> Modifier</button>
+              </div>
+
+              {/* Stats */}
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0.6rem", marginBottom:"0.75rem" }}>
+                {[
+                  {label:"Membres",      value:stats.totalMembers,                                                 color:C.blue,   bg:"#EFF6FF"},
+                  {label:"À jour",       value:`${stats.upToDate}/${stats.totalMembers}`,                         color:C.green,  bg:C.greenLt},
+                  {label:"Cotisations",  value:new Intl.NumberFormat("fr-FR").format(stats.collMensuel+stats.collExcep), sub:"FCFA", color:C.purple, bg:C.purpleLt},
+                  {label:"Locations",    value:new Intl.NumberFormat("fr-FR").format(stats.totalLocYear), sub:"FCFA", color:C.orange, bg:C.orangeLt},
+                ].map(s=>(
+                  <div key={s.label} style={{ background:s.bg, borderRadius:"14px", padding:"0.9rem", border:`1px solid ${s.color}25` }}>
+                    <p style={{ color:C.txt2, fontSize:"0.65rem", fontWeight:600, textTransform:"uppercase", letterSpacing:"0.08em" }}>{s.label}</p>
+                    <p style={{ color:s.color, fontSize:"1.35rem", fontWeight:800, fontFamily:"Syne", lineHeight:1.1, marginTop:"0.2rem" }}>{s.value}</p>
+                    {s.sub&&<p style={{ color:s.color+"99", fontSize:"0.62rem", fontWeight:600 }}>{s.sub}</p>}
+                  </div>
+                ))}
+              </div>
+
+              {/* Total */}
+              <div style={{ background:`linear-gradient(135deg,${C.greenLt},#F0FDF4)`, border:`2px solid ${C.green}40`, borderRadius:"14px", padding:"1rem", marginBottom:"0.75rem", textAlign:"center" }}>
+                <p style={{ color:C.txt2, fontSize:"0.7rem", fontWeight:600, textTransform:"uppercase" }}>Total recettes {CURRENT_YEAR}</p>
+                <p style={{ color:C.green, fontFamily:"Syne", fontSize:"1.9rem", fontWeight:800 }}>{fmt(stats.totalRecettes)}</p>
+              </div>
+
+              {/* Retards */}
+              <p style={{ color:C.txt2, fontSize:"0.7rem", textTransform:"uppercase", letterSpacing:"0.08em", fontWeight:700, marginBottom:"0.5rem" }}>En retard (mensuel)</p>
+              {members.filter(m=>getMemberStatus(m,CURRENT_YEAR)!=="ok").map(m=>{
+                const retard=getMonthsDue(m,CURRENT_YEAR)-getPaidMonths(m.id,CURRENT_YEAR);
+                return (
+                  <div key={m.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:"12px", padding:"0.75rem", marginBottom:"0.45rem", display:"flex", alignItems:"center", justifyContent:"space-between", boxShadow:"0 1px 4px rgba(0,0,0,0.04)" }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:"0.6rem" }}>
+                      <div style={{ width:"36px", height:"36px", borderRadius:"50%", background:`linear-gradient(135deg,${C.blue},${C.purple})`, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700, color:"#fff", flexShrink:0 }}>{m.name[0]}</div>
+                      <div>
+                        <p style={{ color:C.txt, fontWeight:600, fontSize:"0.88rem" }}>{m.name}</p>
+                        <p style={{ color:C.red, fontSize:"0.7rem" }}>{retard} mois en retard • {fmt(retard*getTarif(CURRENT_YEAR))}</p>
+                      </div>
+                    </div>
+                    <StatusBadge status={getMemberStatus(m,CURRENT_YEAR)}/>
+                  </div>
+                );
+              })}
+              {members.filter(m=>getMemberStatus(m,CURRENT_YEAR)!=="ok").length===0&&(
+                <div style={{ background:C.greenLt, border:`1px solid ${C.green}40`, borderRadius:"12px", padding:"0.85rem", textAlign:"center", color:C.green, fontWeight:600, fontSize:"0.85rem" }}>✓ Tous les membres sont à jour !</div>
+              )}
+
+              <p style={{ color:C.txt2, fontSize:"0.7rem", textTransform:"uppercase", letterSpacing:"0.08em", fontWeight:700, margin:"0.85rem 0 0.5rem" }}>Prochains événements</p>
+              {events.filter(e=>new Date(e.date)>=new Date()).sort((a,b)=>new Date(a.date)-new Date(b.date)).slice(0,3).map(e=>(
+                <div key={e.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:"12px", padding:"0.75rem", marginBottom:"0.45rem", display:"flex", gap:"0.7rem", boxShadow:"0 1px 4px rgba(0,0,0,0.04)" }}>
+                  <div style={{ background:"#EFF6FF", border:`1px solid ${C.blue}30`, borderRadius:"10px", padding:"0.4rem 0.55rem", textAlign:"center", minWidth:"38px", flexShrink:0 }}>
+                    <p style={{ color:C.blue, fontWeight:800, fontSize:"0.95rem", fontFamily:"Syne", lineHeight:1 }}>{new Date(e.date).getDate()}</p>
+                    <p style={{ color:C.txt3, fontSize:"0.58rem", fontWeight:600 }}>{new Date(e.date).toLocaleDateString("fr-FR",{month:"short"}).toUpperCase()}</p>
+                  </div>
+                  <div><p style={{ color:C.txt, fontWeight:600, fontSize:"0.85rem" }}>{e.title}</p><p style={{ color:C.txt2, fontSize:"0.7rem" }}>{e.time}{e.location&&` — ${e.location}`}</p></div>
+                </div>
+              ))}
+
+              {/* Signature */}
+              <p style={{ color:C.txt3, fontSize:"0.68rem", textAlign:"center", marginTop:"1.5rem" }}>Mahoro Concept © {CURRENT_YEAR}</p>
+            </div>
+          )}
+
+          {/* Dashboard membre */}
+          {tab==="dashboard"&&isMember&&(()=>{
+            const me=members.find(m=>m.id===myId); if(!me) return null;
+            const due=getMonthsDue(me,CURRENT_YEAR), paid=getPaidMonths(me.id,CURRENT_YEAR), retard=Math.max(0,due-paid), excep=getTotalExcep(me.id,CURRENT_YEAR), tarif=getTarif(CURRENT_YEAR);
+            return (
+              <div>
+                <div style={{ background:`linear-gradient(135deg,${C.blue},${C.purple})`, borderRadius:"16px", padding:"1.25rem", marginBottom:"1rem", textAlign:"center", color:"#fff" }}>
+                  <div style={{ width:"52px", height:"52px", borderRadius:"50%", background:"rgba(255,255,255,0.25)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"1.3rem", fontWeight:700, margin:"0 auto 0.6rem" }}>{me.name[0]}</div>
+                  <p style={{ fontWeight:700, fontSize:"1.05rem" }}>{me.name}</p>
+                  <p style={{ opacity:0.8, fontSize:"0.73rem", marginBottom:"0.6rem" }}>Adhérent depuis {new Date(me.joinDate).toLocaleDateString("fr-FR")}</p>
+                  <StatusBadge status={getMemberStatus(me,CURRENT_YEAR)}/>
+                  <p style={{ opacity:0.8, fontSize:"0.72rem", marginTop:"0.5rem" }}>Cotisation : <strong>{fmt(tarif)}/mois</strong></p>
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0.65rem", marginBottom:"1rem" }}>
+                  <div style={{ background:C.greenLt, borderRadius:"14px", padding:"0.9rem", border:`1px solid ${C.green}30` }}>
+                    <p style={{ color:C.txt2, fontSize:"0.65rem", fontWeight:600, textTransform:"uppercase" }}>Mois payés</p>
+                    <p style={{ color:C.green, fontSize:"1.35rem", fontWeight:800, fontFamily:"Syne" }}>{paid}/{due}</p>
+                    <p style={{ color:C.green, fontSize:"0.62rem" }}>{fmt(paid*tarif)}</p>
+                  </div>
+                  <div style={{ background:excep>0?C.purpleLt:C.card2, borderRadius:"14px", padding:"0.9rem", border:`1px solid ${C.purple}20` }}>
+                    <p style={{ color:C.txt2, fontSize:"0.65rem", fontWeight:600, textTransform:"uppercase" }}>Exceptionnel</p>
+                    <p style={{ color:C.purple, fontSize:"0.9rem", fontWeight:800, fontFamily:"Syne" }}>{excep>0?fmt(excep):"—"}</p>
+                  </div>
+                </div>
+                <MonthGrid member={me} year={CURRENT_YEAR} clickable={false}/>
+              </div>
+            );
+          })()}
+
+          {/* ── MEMBRES ────────────────────────────────────────────────────── */}
+          {tab==="members"&&(
+            <div>
+              {isAdmin&&(
+                <div style={{ position:"relative", marginBottom:"0.9rem" }}>
+                  <div style={{ position:"absolute", left:"0.7rem", top:"50%", transform:"translateY(-50%)", color:C.txt3 }}><SearchIcon/></div>
+                  <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Rechercher un membre..." style={{ width:"100%", background:C.card, border:`1px solid ${C.border}`, borderRadius:"10px", padding:"0.6rem 0.75rem 0.6rem 2.4rem", color:C.txt, fontSize:"0.88rem", outline:"none" }}/>
+                </div>
+              )}
+              {filteredMembers.map(m=>{
+                const status=getMemberStatus(m,CURRENT_YEAR), excep=getTotalExcep(m.id,CURRENT_YEAR);
+                return (
+                  <div key={m.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:"14px", padding:"1rem", marginBottom:"0.7rem", boxShadow:"0 2px 8px rgba(0,0,0,0.05)" }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:"0.75rem" }}>
+                      <div style={{ display:"flex", gap:"0.7rem", alignItems:"center" }}>
+                        <div style={{ width:"40px", height:"40px", borderRadius:"50%", background:`linear-gradient(135deg,${C.blue},${C.purple})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"1rem", fontWeight:700, color:"#fff", flexShrink:0 }}>{m.name[0]}</div>
+                        <div>
+                          <p style={{ color:C.txt, fontWeight:700, fontSize:"0.92rem" }}>{m.name}</p>
+                          <div style={{ display:"flex", alignItems:"center", gap:"0.4rem" }}>
+                            {m.phone&&<p style={{ color:C.txt2, fontSize:"0.7rem" }}>{m.phone}</p>}
+                            {isAdmin&&<span style={{ fontSize:"0.62rem", color:m.password?C.green:C.orange, fontWeight:600 }}>{m.password?"🔐":"⚠ Sans MDP"}</span>}
+                          </div>
+                        </div>
+                      </div>
+                      <StatusBadge status={status}/>
+                    </div>
+                    <MonthGrid member={m} year={CURRENT_YEAR} clickable={isAdmin}/>
+                    {excep>0&&(
+                      <div style={{ display:"flex", alignItems:"center", gap:"0.5rem", marginTop:"0.55rem", background:C.purpleLt, borderRadius:"8px", padding:"0.4rem 0.65rem" }}>
+                        <StarIcon size={13}/><span style={{ color:C.purple, fontSize:"0.73rem", fontWeight:600 }}>Exceptionnel : {fmt(excep)}</span>
+                      </div>
+                    )}
+                    {isAdmin&&(
+                      <div style={{ display:"flex", gap:"0.4rem", marginTop:"0.7rem", flexWrap:"wrap" }}>
+                        <Btn small onClick={()=>{setModal("addCotisation");setForm({memberId:m.id,payType:"mensuelle"});}}>+ Mensuel</Btn>
+                        <Btn small variant="purple" onClick={()=>{setModal("addCotisation");setForm({memberId:m.id,payType:"exceptionnelle"});}}>+ Except.</Btn>
+                        <Btn small variant="ghost" onClick={()=>{setSelMember(m);setModal("memberDetail");}}>Détails</Btn>
+                        {m.password&&<Btn small variant="ghost" onClick={()=>resetMemberPwd(m.id)} style={{ color:C.orange, borderColor:C.orange }}><KeyIcon size={12}/></Btn>}
+                        <Btn small variant="danger" onClick={()=>deleteMember(m.id)}><TrashIcon size={13}/> Supprimer</Btn>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* ── COTISATIONS ────────────────────────────────────────────────── */}
+          {tab==="cotisations"&&(
+            <div>
+              {/* Tarifs */}
+              {isAdmin&&(
+                <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:"12px", padding:"0.75rem 1rem", marginBottom:"0.85rem", boxShadow:"0 1px 4px rgba(0,0,0,0.04)" }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"0.5rem" }}>
+                    <p style={{ color:C.green, fontSize:"0.7rem", fontWeight:700, textTransform:"uppercase" }}>📋 Tarifs par année</p>
+                    <button onClick={()=>{setModal("editTarif");setForm({tarifYear:CURRENT_YEAR+1,tarifMontant:"",isNew:true});}} style={{ background:C.greenLt, border:`1px solid ${C.green}40`, borderRadius:"6px", padding:"2px 8px", color:C.green, fontSize:"0.65rem", fontWeight:600, cursor:"pointer" }}>+ Nouvelle année</button>
+                  </div>
+                  {Object.entries(tarifs).sort((a,b)=>b[0]-a[0]).map(([year,montant])=>(
+                    <div key={year} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"0.25rem 0", borderBottom:`1px solid ${C.border2}` }}>
+                      <span style={{ color:parseInt(year)===CURRENT_YEAR?C.yellow:C.txt2, fontSize:"0.82rem", fontWeight:parseInt(year)===CURRENT_YEAR?700:400 }}>{year}{parseInt(year)===CURRENT_YEAR&&" ★"}</span>
+                      <div style={{ display:"flex", alignItems:"center", gap:"0.5rem" }}>
+                        <span style={{ color:parseInt(year)===CURRENT_YEAR?C.green:C.txt2, fontFamily:"Syne", fontWeight:700, fontSize:"0.88rem" }}>{fmt(montant)}/mois</span>
+                        <button onClick={()=>{setModal("editTarif");setForm({tarifYear:parseInt(year),tarifMontant:montant});}} style={{ background:"none", border:"none", color:C.blue, cursor:"pointer" }}><EditIcon size={13}/></button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Filtres */}
+              <div style={{ display:"flex", gap:"0.4rem", marginBottom:"0.75rem", flexWrap:"wrap" }}>
+                {/* Années depuis 2022 */}
+                <div style={{ display:"flex", gap:"0.35rem", overflowX:"auto", paddingBottom:"2px" }}>
+                  {ALL_YEARS.filter(y=>y<=CURRENT_YEAR).map(y=>(
+                    <button key={y} onClick={()=>setFilterYear(y)} style={{ background:filterYear===y?C.blue:C.card, color:filterYear===y?"#fff":C.txt2, border:`1px solid ${filterYear===y?C.blue:C.border}`, borderRadius:"20px", padding:"0.28rem 0.75rem", fontSize:"0.76rem", fontWeight:600, cursor:"pointer", whiteSpace:"nowrap" }}>{y}</button>
+                  ))}
+                </div>
+              </div>
+              <div style={{ display:"flex", gap:"0.35rem", marginBottom:"0.75rem" }}>
+                {[["all","Tout"],["mensuelle","Mensuel"],["exceptionnelle","Except."]].map(([v,l])=>(
+                  <button key={v} onClick={()=>setFilterType(v)} style={{ background:filterType===v?(v==="exceptionnelle"?C.purple:C.blue):C.card, color:filterType===v?"#fff":C.txt2, border:`1px solid ${filterType===v?(v==="exceptionnelle"?C.purple:C.blue):C.border}`, borderRadius:"20px", padding:"0.28rem 0.8rem", fontSize:"0.76rem", fontWeight:600, cursor:"pointer" }}>{l}</button>
+                ))}
+              </div>
+
+              {isAdmin&&(
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0.6rem", marginBottom:"0.85rem" }}>
+                  <div style={{ background:"#EFF6FF", border:`1px solid ${C.blue}25`, borderRadius:"12px", padding:"0.8rem" }}>
+                    <p style={{ color:C.blue, fontSize:"0.65rem", fontWeight:600, textTransform:"uppercase" }}>Mensuel {filterYear}</p>
+                    <p style={{ color:C.blue, fontFamily:"Syne", fontSize:"1rem", fontWeight:800 }}>{fmt(payments.filter(p=>p.year===filterYear&&p.type==="mensuelle").reduce((s,p)=>s+p.amount,0))}</p>
+                    <p style={{ color:C.txt3, fontSize:"0.62rem" }}>Tarif : {fmt(getTarif(filterYear))}/mois</p>
+                  </div>
+                  <div style={{ background:C.purpleLt, border:`1px solid ${C.purple}25`, borderRadius:"12px", padding:"0.8rem" }}>
+                    <p style={{ color:C.purple, fontSize:"0.65rem", fontWeight:600, textTransform:"uppercase" }}>Exceptionnel {filterYear}</p>
+                    <p style={{ color:C.purple, fontFamily:"Syne", fontSize:"1rem", fontWeight:800 }}>{fmt(payments.filter(p=>p.year===filterYear&&p.type==="exceptionnelle").reduce((s,p)=>s+p.amount,0))}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Grille mensuelle */}
+              {isAdmin&&filterType!=="exceptionnelle"&&(
+                <>
+                  <p style={{ color:C.txt2, fontSize:"0.7rem", textTransform:"uppercase", letterSpacing:"0.08em", fontWeight:700, marginBottom:"0.5rem" }}>Suivi mensuel {filterYear}</p>
+                  <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:"14px", overflow:"hidden", marginBottom:"0.85rem", boxShadow:"0 1px 4px rgba(0,0,0,0.04)" }}>
+                    <div style={{ display:"flex", padding:"0.4rem 0.75rem", borderBottom:`1px solid ${C.border}`, gap:"2px", background:C.card2 }}>
+                      <div style={{ width:"72px", flexShrink:0 }}/>
+                      {MOIS.map(mo=><div key={mo} style={{ flex:1, textAlign:"center", color:C.txt3, fontSize:"0.5rem", fontWeight:700 }}>{mo}</div>)}
+                    </div>
+                    {members.map((m,mi)=>(
+                      <div key={m.id} style={{ display:"flex", padding:"0.4rem 0.75rem", borderBottom:mi<members.length-1?`1px solid ${C.border2}`:"none", alignItems:"center", gap:"2px" }}>
+                        <div style={{ width:"72px", flexShrink:0, color:C.txt, fontSize:"0.7rem", fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{m.name.split(" ")[0]}</div>
+                        {MOIS.map((_,i)=>{
+                          const month=i+1, jd=new Date(m.joinDate), jy=jd.getFullYear(), jm=jd.getMonth()+1;
+                          const na=(filterYear===jy&&month<jm)||(filterYear===CURRENT_YEAR&&month>CURRENT_MONTH)||filterYear>CURRENT_YEAR;
+                          const p=hasPaidMonth(m.id,filterYear,month);
+                          return (
+                            <div key={month} onClick={()=>!na&&!p&&filterYear===CURRENT_YEAR&&quickPayMonth(m.id,month)}
+                              style={{ flex:1, height:"20px", borderRadius:"3px", background:na?C.border2:p?C.greenLt:C.redLt, display:"flex", alignItems:"center", justifyContent:"center", cursor:!na&&!p&&filterYear===CURRENT_YEAR?"pointer":"default", border:`1px solid ${na?C.border:p?C.green+"40":C.red+"40"}` }}>
+                              {p&&<span style={{ color:C.green, fontSize:"0.58rem" }}>✓</span>}
+                              {!p&&!na&&<span style={{ color:C.red, fontSize:"0.52rem" }}>✕</span>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {isMember&&(()=>{const me=members.find(m=>m.id===myId);return me?<MonthGrid member={me} year={CURRENT_YEAR} clickable={false}/>:null;})()}
+
+              <p style={{ color:C.txt2, fontSize:"0.7rem", textTransform:"uppercase", letterSpacing:"0.08em", fontWeight:700, margin:"0.75rem 0 0.5rem" }}>Historique</p>
+              {payments.filter(p=>{
+                if(isMember&&p.memberId!==myId) return false;
+                if(isAdmin&&p.year!==filterYear) return false;
+                if(filterType!=="all"&&p.type!==filterType) return false;
+                return true;
+              }).sort((a,b)=>new Date(b.date)-new Date(a.date)).map(p=>{
+                const member=members.find(m=>m.id===p.memberId);
+                return (
+                  <div key={p.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:"11px", padding:"0.7rem 1rem", marginBottom:"0.4rem", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"0.5rem", boxShadow:"0 1px 3px rgba(0,0,0,0.04)" }}>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      {isAdmin&&<p style={{ color:C.txt, fontWeight:600, fontSize:"0.84rem" }}>{member?.name}</p>}
+                      <div style={{ display:"flex", alignItems:"center", gap:"0.4rem", marginTop:isAdmin?"0.2rem":"0" }}>
+                        <TypeBadge type={p.type}/>
+                        <p style={{ color:C.txt2, fontSize:"0.66rem" }}>{p.type==="mensuelle"?`${MOIS[p.month-1]} ${p.year}`:p.label} • {new Date(p.date).toLocaleDateString("fr-FR")} • {p.method}</p>
+                      </div>
+                    </div>
+                    <div style={{ display:"flex", alignItems:"center", gap:"0.5rem", flexShrink:0 }}>
+                      <p style={{ color:p.type==="exceptionnelle"?C.purple:C.green, fontWeight:700, fontSize:"0.9rem", fontFamily:"Syne" }}>+{fmt(p.amount)}</p>
+                      {isAdmin&&(
+                        <button onClick={()=>deletePayment(p.id)} style={{ background:C.redLt, border:`1px solid ${C.red}30`, borderRadius:"6px", padding:"4px 6px", color:C.red, cursor:"pointer", display:"flex", alignItems:"center" }}>
+                          <TrashIcon size={13}/>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* ── LOCATIONS ──────────────────────────────────────────────────── */}
+          {tab==="locations"&&(
+            <div>
+              {isAdmin&&(
+                <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:"12px", padding:"0.75rem 1rem", marginBottom:"0.85rem", boxShadow:"0 1px 4px rgba(0,0,0,0.04)" }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"0.5rem" }}>
+                    <p style={{ color:C.orange, fontSize:"0.7rem", fontWeight:700, textTransform:"uppercase" }}>Prix unitaires</p>
+                    <button onClick={()=>{setModal("editPrix");setForm({prixChaise:prix.chaise,prixBache:prix.bache});}} style={{ background:C.orangeLt, border:`1px solid ${C.orange}40`, borderRadius:"6px", padding:"2px 8px", color:C.orange, fontSize:"0.65rem", fontWeight:600, cursor:"pointer", display:"flex", alignItems:"center", gap:"3px" }}><EditIcon size={11}/> Modifier</button>
+                  </div>
+                  <div style={{ display:"flex", gap:"0.5rem" }}>
+                    <div style={{ flex:1, background:C.card2, borderRadius:"8px", padding:"0.5rem", textAlign:"center", border:`1px solid ${C.border2}` }}>
+                      <p style={{ color:C.txt2, fontSize:"0.65rem" }}>🪑 Chaise</p>
+                      <p style={{ color:C.orange, fontFamily:"Syne", fontWeight:700, fontSize:"0.9rem" }}>{fmt(prix.chaise)}</p>
+                    </div>
+                    <div style={{ flex:1, background:C.card2, borderRadius:"8px", padding:"0.5rem", textAlign:"center", border:`1px solid ${C.border2}` }}>
+                      <p style={{ color:C.txt2, fontSize:"0.65rem" }}>🏕 Bâche</p>
+                      <p style={{ color:C.orange, fontFamily:"Syne", fontWeight:700, fontSize:"0.9rem" }}>{fmt(prix.bache)}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"0.5rem", marginBottom:"0.85rem" }}>
+                {[
+                  {label:"Chaises", value:fmt(locations.filter(l=>l.date.startsWith(String(CURRENT_YEAR))&&l.type==="chaise").reduce((s,l)=>s+l.montant,0)), color:C.blue},
+                  {label:"Bâches",  value:fmt(locations.filter(l=>l.date.startsWith(String(CURRENT_YEAR))&&l.type==="bache").reduce((s,l)=>s+l.montant,0)),  color:C.purple},
+                  {label:"Total",   value:fmt(locations.filter(l=>l.date.startsWith(String(CURRENT_YEAR))).reduce((s,l)=>s+l.montant,0)),                     color:C.green},
+                ].map(s=>(
+                  <div key={s.label} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:"12px", padding:"0.65rem", textAlign:"center", boxShadow:"0 1px 4px rgba(0,0,0,0.04)" }}>
+                    <p style={{ color:C.txt2, fontSize:"0.62rem", fontWeight:600, textTransform:"uppercase" }}>{s.label}</p>
+                    <p style={{ color:s.color, fontFamily:"Syne", fontSize:"0.78rem", fontWeight:800 }}>{s.value}</p>
+                  </div>
+                ))}
+              </div>
+
+              {locations.sort((a,b)=>new Date(b.date)-new Date(a.date)).map(l=>(
+                <div key={l.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:"12px", padding:"0.9rem", marginBottom:"0.55rem", boxShadow:"0 2px 8px rgba(0,0,0,0.05)" }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                    <div style={{ flex:1 }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:"0.5rem", marginBottom:"0.25rem" }}>
+                        <span style={{ fontSize:"1.1rem" }}>{l.type==="chaise"?"🪑":"🏕"}</span>
+                        <p style={{ color:C.txt, fontWeight:700, fontSize:"0.9rem" }}>{l.type==="chaise"?"Location de chaises":"Location de bâche"}</p>
+                      </div>
+                      {l.client&&<p style={{ color:C.blue, fontSize:"0.75rem", fontWeight:600 }}>{l.client}</p>}
+                      <p style={{ color:C.txt2, fontSize:"0.72rem" }}>{new Date(l.date).toLocaleDateString("fr-FR")} • {l.method}</p>
+                      <p style={{ color:C.txt3, fontSize:"0.7rem", marginTop:"0.15rem" }}>{fmtN(l.quantite)} {l.type==="chaise"?"chaises":"bâches"} × {fmt(l.prixUnit)}{l.notes&&` — ${l.notes}`}</p>
+                    </div>
+                    <div style={{ textAlign:"right", flexShrink:0 }}>
+                      <p style={{ color:C.orange, fontWeight:800, fontSize:"1rem", fontFamily:"Syne" }}>{fmt(l.montant)}</p>
+                      {isAdmin&&(
+                        <button onClick={()=>deleteLocation(l.id)} style={{ background:C.redLt, border:`1px solid ${C.red}30`, borderRadius:"6px", padding:"4px 6px", color:C.red, cursor:"pointer", display:"flex", alignItems:"center", marginTop:"0.35rem", marginLeft:"auto" }}>
+                          <TrashIcon size={13}/>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {locations.length===0&&<p style={{ color:C.txt3, textAlign:"center", padding:"2rem" }}>Aucune location enregistrée</p>}
+            </div>
+          )}
+
+          {/* ── ÉVÉNEMENTS ─────────────────────────────────────────────────── */}
+          {tab==="events"&&(
+            <div>
+              {events.sort((a,b)=>new Date(a.date)-new Date(b.date)).map(e=>{
+                const isPast=new Date(e.date)<new Date();
+                return (
+                  <div key={e.id} style={{ background:C.card, border:`1px solid ${isPast?C.border2:C.blue+"40"}`, borderRadius:"14px", marginBottom:"0.75rem", opacity:isPast?0.65:1, boxShadow:"0 2px 8px rgba(0,0,0,0.05)" }}>
+                    <div style={{ padding:"1rem" }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                        <div>
+                          <p style={{ color:isPast?C.txt3:C.blue, fontSize:"0.68rem", fontWeight:600, textTransform:"uppercase", letterSpacing:"0.08em" }}>{isPast?"Passé":"À venir"} • {new Date(e.date).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"})}</p>
+                          <p style={{ color:C.txt, fontWeight:700, fontSize:"1rem", marginTop:"0.2rem", fontFamily:"Syne" }}>{e.title}</p>
+                          <p style={{ color:C.txt2, fontSize:"0.75rem" }}>{e.time}{e.location&&` — ${e.location}`}</p>
+                          {e.description&&<p style={{ color:C.txt3, fontSize:"0.72rem", marginTop:"0.2rem" }}>{e.description}</p>}
+                        </div>
+                        {isAdmin&&(
+                          <button onClick={()=>deleteEvent(e.id)} style={{ background:C.redLt, border:`1px solid ${C.red}30`, borderRadius:"6px", padding:"5px", color:C.red, cursor:"pointer", display:"flex" }}>
+                            <TrashIcon size={14}/>
+                          </button>
+                        )}
+                      </div>
+                      <div style={{ marginTop:"0.75rem" }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", marginBottom:"0.3rem" }}>
+                          <p style={{ color:C.txt2, fontSize:"0.7rem" }}>Participants</p>
+                          <p style={{ color:C.blue, fontSize:"0.7rem", fontWeight:700 }}>{e.participants.length}/{e.maxParticipants}</p>
+                        </div>
+                        <div style={{ background:C.card2, borderRadius:"4px", height:"5px", marginBottom:"0.45rem", overflow:"hidden" }}>
+                          <div style={{ background:C.blue, height:"100%", width:`${Math.min(100,(e.participants.length/e.maxParticipants)*100)}%` }}/>
+                        </div>
+                        {isAdmin?(
+                          <div style={{ display:"flex", flexWrap:"wrap", gap:"0.35rem" }}>
+                            {members.map(m=>{const isIn=e.participants.includes(m.id);return(
+                              <button key={m.id} onClick={()=>toggleParticipant(e.id,m.id)} style={{ background:isIn?"#EFF6FF":C.card2, border:`1px solid ${isIn?C.blue:C.border}`, borderRadius:"20px", padding:"3px 9px", color:isIn?C.blue:C.txt2, fontSize:"0.7rem", fontWeight:600, cursor:"pointer", display:"flex", alignItems:"center", gap:"3px" }}>
+                                {isIn&&<span style={{ color:C.green, fontSize:"0.6rem" }}>✓</span>}{m.name.split(" ")[0]}
+                              </button>
+                            );})}
+                          </div>
+                        ):(
+                          <p style={{ color:e.participants.includes(myId)?C.green:C.txt2, fontSize:"0.78rem", fontWeight:600 }}>
+                            {e.participants.includes(myId)?"✓ Vous participez":"Vous n'êtes pas inscrit"}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Nav */}
+        <div style={{ position:"fixed", bottom:0, left:"50%", transform:"translateX(-50%)", width:"100%", maxWidth:"430px", background:C.nav, borderTop:`1px solid #334155`, display:"flex", padding:"0.45rem 0", zIndex:20 }}>
+          {NAV.map(n=>(
+            <button key={n.id} onClick={()=>setTab(n.id)} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:"2px", background:"none", border:"none", cursor:"pointer", color:tab===n.id?C.navAct:C.navTxt, padding:"0.3rem 0", transition:"color 0.15s" }}>
+              {n.icon}
+              <span style={{ fontSize:"0.55rem", fontWeight:tab===n.id?700:500 }}>{n.id==="members"&&isMember?"Profil":n.label}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* ── MODALS ───────────────────────────────────────────────────────── */}
+
+        {modal==="bilan"&&(
+          <Modal title="📊 Bilan Financier" onClose={()=>setModal(null)} wide>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0.75rem", marginBottom:"1rem" }}>
+              <Inp label="Du" type="date" value={bilan.from} onChange={e=>setBilan(b=>({...b,from:e.target.value}))}/>
+              <Inp label="Au" type="date" value={bilan.to} onChange={e=>setBilan(b=>({...b,to:e.target.value}))}/>
+            </div>
+            <BilanContent dateFrom={bilan.from} dateTo={bilan.to} payments={payments} locations={locations} members={members}/>
+            <div style={{ display:"flex", gap:"0.5rem", marginTop:"1.25rem", justifyContent:"flex-end" }}>
+              <Btn variant="ghost" onClick={()=>setModal(null)}>Fermer</Btn>
+              <Btn variant="teal" onClick={printBilan}><PrintIcon size={14}/> Imprimer / PDF</Btn>
+            </div>
+          </Modal>
+        )}
+
+        {modal==="editTarif"&&isAdmin&&(
+          <Modal title={form.isNew?"Nouveau tarif":"Modifier le tarif"} onClose={()=>setModal(null)}>
+            <div style={{ background:C.card2, borderRadius:"10px", padding:"0.75rem", marginBottom:"1rem", border:`1px solid ${C.border2}` }}>
+              <p style={{ color:C.txt2, fontSize:"0.78rem" }}>Les paiements déjà enregistrés ne sont pas modifiés.</p>
+            </div>
+            <Sel label="Année" value={form.tarifYear||CURRENT_YEAR} onChange={e=>setForm(p=>({...p,tarifYear:parseInt(e.target.value)}))}>
+              {ALL_YEARS.map(y=><option key={y} value={y}>{y}</option>)}
+            </Sel>
+            <Inp label="Montant mensuel (FCFA) *" type="number" value={form.tarifMontant||""} onChange={e=>setForm(p=>({...p,tarifMontant:e.target.value}))} placeholder="Ex : 1500"/>
+            {form.tarifMontant&&<p style={{ color:C.green, fontSize:"0.8rem", marginBottom:"0.75rem" }}>→ Annuel complet : {fmt(parseFloat(form.tarifMontant)*12)}</p>}
+            <div style={{ display:"flex", gap:"0.5rem", justifyContent:"flex-end" }}>
+              <Btn variant="ghost" onClick={()=>setModal(null)}>Annuler</Btn>
+              <Btn variant="teal" onClick={handleSaveTarif}><CheckIcon/> Enregistrer</Btn>
+            </div>
+          </Modal>
+        )}
+
+        {modal==="editPrix"&&isAdmin&&(
+          <Modal title="Prix unitaires de location" onClose={()=>setModal(null)}>
+            <Inp label="🪑 Prix par chaise (FCFA)" type="number" value={form.prixChaise||""} onChange={e=>setForm(p=>({...p,prixChaise:e.target.value}))} placeholder={String(prix.chaise)}/>
+            <Inp label="🏕 Prix par bâche (FCFA)" type="number" value={form.prixBache||""} onChange={e=>setForm(p=>({...p,prixBache:e.target.value}))} placeholder={String(prix.bache)}/>
+            <div style={{ display:"flex", gap:"0.5rem", justifyContent:"flex-end" }}>
+              <Btn variant="ghost" onClick={()=>setModal(null)}>Annuler</Btn>
+              <Btn variant="teal" onClick={()=>{ setPrix({chaise:parseFloat(form.prixChaise||prix.chaise), bache:parseFloat(form.prixBache||prix.bache)}); setModal(null); }}><CheckIcon/> Enregistrer</Btn>
+            </div>
+          </Modal>
+        )}
+
+        {modal==="addMember"&&isAdmin&&(
+          <Modal title="Nouveau membre" onClose={()=>setModal(null)}>
+            <Inp label="Nom complet *" value={form.name||""} onChange={e=>setForm(p=>({...p,name:e.target.value}))} placeholder="Kouassi Aman"/>
+            <Inp label="Téléphone" value={form.phone||""} onChange={e=>setForm(p=>({...p,phone:e.target.value}))} placeholder="07 00 00 00 00"/>
+            <Inp label="Date d'adhésion" type="date" value={form.joinDate||today()} onChange={e=>setForm(p=>({...p,joinDate:e.target.value}))}/>
+            <div style={{ background:"#EFF6FF", border:`1px solid ${C.blue}30`, borderRadius:"8px", padding:"0.6rem", marginBottom:"0.5rem" }}>
+              <p style={{ color:C.blue, fontSize:"0.75rem" }}>🔐 Le membre choisira son mot de passe à sa première connexion.</p>
+            </div>
+            <div style={{ display:"flex", gap:"0.5rem", justifyContent:"flex-end" }}>
+              <Btn variant="ghost" onClick={()=>setModal(null)}>Annuler</Btn>
+              <Btn onClick={handleAddMember}>Ajouter</Btn>
+            </div>
+          </Modal>
+        )}
+
+        {modal==="addCotisation"&&isAdmin&&(
+          <Modal title="Enregistrer un paiement" onClose={()=>setModal(null)}>
+            <div style={{ display:"flex", gap:"0.4rem", marginBottom:"1rem" }}>
+              {[["mensuelle","📅 Mensuelle"],["exceptionnelle","⭐ Exceptionnelle"]].map(([v,l])=>(
+                <button key={v} onClick={()=>setForm(p=>({...p,payType:v}))} style={{ flex:1, background:form.payType===v?(v==="exceptionnelle"?C.purple:C.blue):C.card2, color:form.payType===v?"#fff":C.txt2, border:`1px solid ${form.payType===v?(v==="exceptionnelle"?C.purple:C.blue):C.border}`, borderRadius:"10px", padding:"0.55rem", fontSize:"0.8rem", fontWeight:700, cursor:"pointer" }}>{l}</button>
+              ))}
+            </div>
+            <Sel label="Membre *" value={form.memberId||""} onChange={e=>setForm(p=>({...p,memberId:e.target.value}))}>
+              <option value="">Sélectionner un membre</option>
+              {members.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+            </Sel>
+            {form.payType==="mensuelle"?(
+              <>
+                <Sel label="Année" value={form.year||CURRENT_YEAR} onChange={e=>setForm(p=>({...p,year:parseInt(e.target.value)}))}>
+                  {ALL_YEARS.filter(y=>y<=CURRENT_YEAR).map(y=><option key={y} value={y}>{y}</option>)}
+                </Sel>
+                <Sel label="Mois *" value={form.month||""} onChange={e=>setForm(p=>({...p,month:e.target.value}))}>
+                  <option value="">Choisir le mois</option>
+                  {MOIS.map((mo,i)=><option key={i+1} value={i+1}>{mo}</option>)}
+                </Sel>
+                <div style={{ background:C.yellowLt, borderRadius:"8px", padding:"0.55rem 0.75rem", marginBottom:"0.85rem", border:`1px solid ${C.yellow}40` }}>
+                  <p style={{ color:C.txt2, fontSize:"0.72rem" }}>Tarif {form.year||CURRENT_YEAR} : <strong style={{ color:C.yellow }}>{fmt(getTarif(form.year||CURRENT_YEAR))}</strong></p>
+                </div>
+                <Inp label="Montant FCFA" type="number" value={form.amount!==undefined?form.amount:getTarif(form.year||CURRENT_YEAR)} onChange={e=>setForm(p=>({...p,amount:e.target.value}))}/>
+              </>
+            ):(
+              <>
+                <Inp label="Motif *" value={form.label||""} onChange={e=>setForm(p=>({...p,label:e.target.value}))} placeholder="Fête annuelle, Fonds d'urgence…"/>
+                <Inp label="Montant FCFA *" type="number" value={form.amount||""} onChange={e=>setForm(p=>({...p,amount:e.target.value}))} placeholder="Montant libre"/>
+                <Sel label="Année" value={form.year||CURRENT_YEAR} onChange={e=>setForm(p=>({...p,year:parseInt(e.target.value)}))}>
+                  {ALL_YEARS.filter(y=>y<=CURRENT_YEAR).map(y=><option key={y} value={y}>{y}</option>)}
+                </Sel>
+              </>
+            )}
+            <Sel label="Mode de paiement" value={form.method||"Espèces"} onChange={e=>setForm(p=>({...p,method:e.target.value}))}>
+              {["Espèces","Mobile Money","Virement","Chèque"].map(m=><option key={m}>{m}</option>)}
+            </Sel>
+            <Inp label="Date" type="date" value={form.date||today()} onChange={e=>setForm(p=>({...p,date:e.target.value}))}/>
+            <div style={{ display:"flex", gap:"0.5rem", justifyContent:"flex-end" }}>
+              <Btn variant="ghost" onClick={()=>setModal(null)}>Annuler</Btn>
+              <Btn variant={form.payType==="exceptionnelle"?"purple":"success"} onClick={handleAddPayment}><CheckIcon/> Valider</Btn>
+            </div>
+          </Modal>
+        )}
+
+        {modal==="addLocation"&&isAdmin&&(
+          <Modal title="Nouvelle location" onClose={()=>setModal(null)}>
+            <div style={{ display:"flex", gap:"0.4rem", marginBottom:"1rem" }}>
+              {[["chaise","🪑 Chaises"],["bache","🏕 Bâche"]].map(([v,l])=>(
+                <button key={v} onClick={()=>setForm(p=>({...p,locType:v,prixUnit:v==="chaise"?prix.chaise:prix.bache}))} style={{ flex:1, background:form.locType===v?C.orange:C.card2, color:form.locType===v?"#fff":C.txt2, border:`1px solid ${form.locType===v?C.orange:C.border}`, borderRadius:"10px", padding:"0.55rem", fontSize:"0.8rem", fontWeight:700, cursor:"pointer" }}>{l}</button>
+              ))}
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0.75rem" }}>
+              <Inp label={`Quantité *`} type="number" value={form.quantite||""} onChange={e=>setForm(p=>({...p,quantite:e.target.value}))} placeholder="Ex : 50"/>
+              <Inp label="Prix unitaire (FCFA)" type="number" value={form.prixUnit||""} onChange={e=>setForm(p=>({...p,prixUnit:e.target.value}))} placeholder={String(form.locType==="bache"?prix.bache:prix.chaise)}/>
+            </div>
+            {form.quantite&&(
+              <div style={{ background:C.yellowLt, border:`1px solid ${C.yellow}40`, borderRadius:"8px", padding:"0.6rem 0.75rem", marginBottom:"0.85rem", display:"flex", justifyContent:"space-between" }}>
+                <span style={{ color:C.txt2, fontSize:"0.78rem" }}>Total calculé</span>
+                <span style={{ color:C.yellow, fontWeight:700, fontSize:"0.9rem", fontFamily:"Syne" }}>{fmt(parseFloat(form.quantite||0)*parseFloat(form.prixUnit||(form.locType==="bache"?prix.bache:prix.chaise)||0))}</span>
+              </div>
+            )}
+            <Inp label="Client" value={form.client||""} onChange={e=>setForm(p=>({...p,client:e.target.value}))} placeholder="Nom du client / événement"/>
+            <Inp label="Date *" type="date" value={form.date||today()} onChange={e=>setForm(p=>({...p,date:e.target.value}))}/>
+            <Sel label="Mode de paiement" value={form.method||"Espèces"} onChange={e=>setForm(p=>({...p,method:e.target.value}))}>
+              {["Espèces","Mobile Money","Virement","Chèque"].map(m=><option key={m}>{m}</option>)}
+            </Sel>
+            <Inp label="Notes (optionnel)" value={form.notes||""} onChange={e=>setForm(p=>({...p,notes:e.target.value}))} placeholder="Baptême, mariage…"/>
+            <div style={{ display:"flex", gap:"0.5rem", justifyContent:"flex-end" }}>
+              <Btn variant="ghost" onClick={()=>setModal(null)}>Annuler</Btn>
+              <Btn variant="orange" onClick={handleAddLocation}><CheckIcon/> Enregistrer</Btn>
+            </div>
+          </Modal>
+        )}
+
+        {modal==="addEvent"&&isAdmin&&(
+          <Modal title="Nouvel événement" onClose={()=>setModal(null)}>
+            <Inp label="Titre *" value={form.title||""} onChange={e=>setForm(p=>({...p,title:e.target.value}))} placeholder="Assemblée générale"/>
+            <Inp label="Date *" type="date" value={form.date||""} onChange={e=>setForm(p=>({...p,date:e.target.value}))}/>
+            <Inp label="Heure" type="time" value={form.time||"09:00"} onChange={e=>setForm(p=>({...p,time:e.target.value}))}/>
+            <Inp label="Lieu" value={form.location||""} onChange={e=>setForm(p=>({...p,location:e.target.value}))} placeholder="Salle communautaire"/>
+            <Inp label="Description" value={form.description||""} onChange={e=>setForm(p=>({...p,description:e.target.value}))} placeholder="Description..."/>
+            <Inp label="Max participants" type="number" value={form.maxParticipants||50} onChange={e=>setForm(p=>({...p,maxParticipants:e.target.value}))}/>
+            <div style={{ display:"flex", gap:"0.5rem", justifyContent:"flex-end" }}>
+              <Btn variant="ghost" onClick={()=>setModal(null)}>Annuler</Btn>
+              <Btn onClick={handleAddEvent}><PlusIcon/> Créer</Btn>
+            </div>
+          </Modal>
+        )}
+
+        {modal==="memberDetail"&&isAdmin&&selMember&&(
+          <Modal title={selMember.name} onClose={()=>setModal(null)}>
+            <div style={{ marginBottom:"1rem" }}>
+              <p style={{ color:C.txt2, fontSize:"0.75rem" }}>Adhérent depuis {new Date(selMember.joinDate).toLocaleDateString("fr-FR")}</p>
+              {selMember.phone&&<p style={{ color:C.txt2, fontSize:"0.82rem", marginTop:"0.2rem" }}>📞 {selMember.phone}</p>}
+              <p style={{ color:selMember.password?C.green:C.orange, fontSize:"0.78rem", marginTop:"0.3rem" }}>{selMember.password?"🔐 Mot de passe défini":"⚠ Pas encore de mot de passe"}</p>
+            </div>
+            <div style={{ display:"flex", gap:"0.5rem", marginBottom:"0.75rem" }}>
+              <div style={{ flex:1, background:"#EFF6FF", borderRadius:"10px", padding:"0.6rem", textAlign:"center" }}>
+                <p style={{ color:C.blue, fontSize:"0.62rem", fontWeight:600 }}>Total mensuel</p>
+                <p style={{ color:C.blue, fontFamily:"Syne", fontWeight:800, fontSize:"0.92rem" }}>{fmt(payments.filter(p=>p.memberId===selMember.id&&p.type==="mensuelle").reduce((s,p)=>s+p.amount,0))}</p>
+              </div>
+              <div style={{ flex:1, background:C.purpleLt, borderRadius:"10px", padding:"0.6rem", textAlign:"center" }}>
+                <p style={{ color:C.purple, fontSize:"0.62rem", fontWeight:600 }}>Total except.</p>
+                <p style={{ color:C.purple, fontFamily:"Syne", fontWeight:800, fontSize:"0.92rem" }}>{fmt(getTotalExcep(selMember.id,CURRENT_YEAR))}</p>
+              </div>
+            </div>
+            <p style={{ color:C.txt2, fontSize:"0.7rem", textTransform:"uppercase", letterSpacing:"0.08em", fontWeight:700, marginBottom:"0.5rem" }}>Historique complet</p>
+            {payments.filter(p=>p.memberId===selMember.id).sort((a,b)=>b.year-a.year||(b.month||0)-(a.month||0)).map(p=>(
+              <div key={p.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"0.5rem 0", borderBottom:`1px solid ${C.border2}` }}>
+                <div style={{ display:"flex", alignItems:"center", gap:"0.4rem" }}>
+                  <TypeBadge type={p.type}/>
+                  <span style={{ color:C.txt2, fontSize:"0.76rem" }}>{p.type==="mensuelle"?`${MOIS[p.month-1]} ${p.year}`:p.label} — {p.method}</span>
+                </div>
+                <span style={{ color:p.type==="exceptionnelle"?C.purple:C.green, fontSize:"0.82rem", fontWeight:700 }}>{fmt(p.amount)}</span>
+              </div>
+            ))}
+            {payments.filter(p=>p.memberId===selMember.id).length===0&&<p style={{ color:C.txt3, textAlign:"center", padding:"1rem", fontSize:"0.82rem" }}>Aucun paiement enregistré</p>}
+          </Modal>
+        )}
+      </div>
+    </>
+  );
+}
